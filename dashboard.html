@@ -5,69 +5,37 @@
   <title>Dashboard Mercado Libre</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    :root {
-      --bg: #0f172a;
-      --card: #111827;
-      --text: #e5e7eb;
-      --muted: #94a3b8;
-      --accent: #22d3ee;
-      --green: #10b981;
-      --red: #ef4444;
-      --amber: #f59e0b;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans";
-      background: linear-gradient(180deg, #060b1b, #0b122a);
-      color: var(--text);
-    }
-    header {
-      padding: 20px 24px; display: flex; align-items: center; justify-content: space-between;
-      position: sticky; top: 0; backdrop-filter: blur(8px); background: rgba(15, 23, 42, 0.6); border-bottom: 1px solid #1f2937;
-    }
-    header h1 { margin: 0; font-size: 18px; letter-spacing: .4px; color: #fff; }
-    header .actions { display: flex; gap: 8px; align-items: center; }
-    .pill { font-size: 12px; color: var(--muted); padding: 6px 10px; background: #0b1220; border: 1px solid #1f2937; border-radius: 999px; }
-    .container { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
-    .filters { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
-    .filters select, .filters input {
-      background: var(--card); color: var(--text); border: 1px solid #1f2937; border-radius: 8px; padding: 8px 10px;
-    }
-    .card {
-      background: var(--card); border: 1px solid #1f2937; border-radius: 12px; overflow: hidden;
-    }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 12px 14px; border-bottom: 1px solid #1f2937; font-size: 14px; }
-    th { text-align: left; color: var(--muted); background: #0d1326; position: sticky; top: 60px; }
-    tr:hover td { background: rgba(34, 211, 238, 0.04); }
-    .badge { padding: 4px 8px; border-radius: 999px; font-size: 12px; border: 1px solid #1f2937; }
-    .b-orden { background: rgba(34, 211, 238, .08); color: #67e8f9; }
-    .b-envio { background: rgba(16, 185, 129, .08); color: #86efac; }
-    .b-pregunta { background: rgba(245, 158, 11, .08); color: #facc15; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
-    .muted { color: var(--muted); }
+    :root{--bg:#0f172a;--card:#111827;--text:#e5e7eb;--muted:#94a3b8;--accent:#22d3ee}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,"Noto Sans","Liberation Sans";background:linear-gradient(180deg,#060b1b,#0b122a);color:var(--text)}
+    header{padding:20px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:rgba(15,23,42,.6);backdrop-filter:blur(8px);border-bottom:1px solid #1f2937}
+    header h1{margin:0;font-size:18px}
+    .actions{display:flex;gap:8px}
+    .pill{font-size:12px;color:var(--muted);padding:6px 10px;background:#0b1220;border:1px solid #1f2937;border-radius:999px;cursor:pointer}
+    .container{max-width:1100px;margin:24px auto;padding:0 16px}
+    .card{background:#111827;border:1px solid #1f2937;border-radius:12px;overflow:hidden}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:12px 14px;border-bottom:1px solid #1f2937;font-size:14px}
+    th{background:#0d1326;text-align:left;position:sticky;top:60px;color:#94a3b8}
+    tr:hover td{background:rgba(34,211,238,.04)}
+    .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+    #status-line{margin:12px 0 8px 0;font-size:13px;opacity:.85}
+    #status-line[data-tone="ok"]{color:#86efac}
+    #status-line[data-tone="error"]{color:#fca5a5}
+    #status-line[data-tone="muted"]{color:#94a3b8}
   </style>
 </head>
 <body>
   <header>
     <h1>📊 Resumen Mercado Libre</h1>
     <div class="actions">
-      <span class="pill">auto-refresh 10s</span>
-      <button id="btnReload" class="pill">Recargar</button>
+      <button id="btn-auto-refresh" class="pill" data-on="0">auto-refresh 10s</button>
+      <button id="btn-reload" class="pill">Recargar</button>
     </div>
   </header>
 
   <div class="container">
-    <div class="filters">
-      <select id="typeFilter">
-        <option value="">Todos los tipos</option>
-        <option value="Orden">Órdenes</option>
-        <option value="Envío">Envíos</option>
-        <option value="Pregunta">Preguntas</option>
-        <option value="Evento">Otros</option>
-      </select>
-      <input type="text" id="search" placeholder="Buscar por ID / comprador / estado..." />
-    </div>
+    <div id="status-line" data-tone="muted">Listo</div>
 
     <div class="card">
       <table>
@@ -79,8 +47,8 @@
             <th>Monto</th>
             <th>Comprador</th>
             <th>Fecha</th>
-            <th class="muted">Topic</th>
-            <th class="muted">User</th>
+            <th class="mono">Topic</th>
+            <th class="mono">User</th>
           </tr>
         </thead>
         <tbody id="tbody"></tbody>
@@ -89,58 +57,98 @@
   </div>
 
   <script>
-    const tbody = document.getElementById("tbody");
-    const selType = document.getElementById("typeFilter");
-    const inpSearch = document.getElementById("search");
-    const btnReload = document.getElementById("btnReload");
+  (() => {
+    const API_URL = '/api/meli-summary';
+    const tbody = document.getElementById('tbody');
+    const btnReload = document.getElementById('btn-reload');
+    const btnAutoRefresh = document.getElementById('btn-auto-refresh');
+    const statusLine = document.getElementById('status-line');
 
-    let cache = [];
+    let autoTimer = null;
+    let autoOn = false;
 
-    const badge = (type) => {
-      if (type === "Orden") return '<span class="badge b-orden">Orden</span>';
-      if (type === "Envío") return '<span class="badge b-envio">Envío</span>';
-      if (type === "Pregunta") return '<span class="badge b-pregunta">Pregunta</span>';
-      return '<span class="badge">Evento</span>';
+    const fmtMoney = n => (n==null||isNaN(n)) ? '—' :
+      (n).toLocaleString('es-AR',{style:'currency',currency:'ARS'});
+    const fmtDate  = d => d ? new Date(d).toLocaleString('es-AR') : '—';
+    const safe     = (v,f='—') => (v ?? '')!=='' ? v : f;
+    const pick = (obj, paths=[]) => {
+      for (const p of paths) {
+        const v = p.split('.').reduce((acc,k)=>acc?.[k], obj);
+        if (v !== undefined && v !== null) return v;
+      }
+      return undefined;
+    };
+    const setStatus = (msg,tone='muted') => {
+      statusLine.textContent = msg;
+      statusLine.dataset.tone = tone;
     };
 
-    function render() {
-      const type = selType.value.trim().toLowerCase();
-      const q = inpSearch.value.trim().toLowerCase();
+    async function loadData() {
+      try {
+        setStatus('Cargando…','muted');
+        const res = await fetch(API_URL,{cache:'no-store'});
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        const data = Array.isArray(json) ? json : (Array.isArray(json?.events) ? json.events : []);
 
-      const rows = cache.filter(e => {
-        const okType = !type || e.type.toLowerCase() === type;
-        const text = (e.id||"") + " " + (e.status||"") + " " + (e.buyer||"") + " " + (e.user_id||"");
-        const okSearch = !q || text.toLowerCase().includes(q);
-        return okType && okSearch;
-      });
+        tbody.innerHTML = '';
 
-      tbody.innerHTML = rows.map(e => `
-        <tr>
-          <td>${badge(e.type)}</td>
-          <td class="mono">${e.id || ""}</td>
-          <td>${e.status || ""}</td>
-          <td>${e.amount != null ? "$ " + e.amount : ""}</td>
-          <td>${e.buyer || ""}</td>
-          <td class="mono">${e.date || ""}</td>
-          <td class="muted mono">${e.rawTopic || ""}</td>
-          <td class="muted mono">${e.user_id || ""}</td>
-        </tr>
-      `).join("");
+        if (!Array.isArray(data) || data.length===0) {
+          setStatus('Sin datos para mostrar.','muted');
+          tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:16px;">No hay registros</td></tr>`;
+          return;
+        }
+
+        for (const item of data) {
+          const tipo = safe(pick(item, ['type','resource','topic','notification_type']), '—');
+          const id   = safe(pick(item, ['id','order_id','resource_id','order.id','payment_id','shipment_id']), '—');
+          const estado = safe(pick(item, ['status','order_status','order.status','payment.status','shipment.status']), '—');
+          const monto  = fmtMoney(Number(pick(item, ['amount','total_amount','order.total_amount','transaction_amount','payment.transaction_amount'])));
+          const comprador = safe(pick(item, ['buyer.nickname','buyer.name','buyer','payer.nickname','payer.email']), '—');
+          const fecha = fmtDate(pick(item, ['date_created','created_at','order.date_created','timestamp']));
+          const topic = safe(pick(item, ['topic','resource','notification_type']), '—');
+          const user  = safe(pick(item, ['user_id','user','seller.id']), '—');
+
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${tipo}</td>
+            <td class="mono">${id}</td>
+            <td>${estado}</td>
+            <td>${monto}</td>
+            <td>${comprador}</td>
+            <td class="mono">${fecha}</td>
+            <td class="mono">${topic}</td>
+            <td class="mono">${user}</td>
+          `;
+          tbody.appendChild(tr);
+        }
+
+        setStatus(`OK · ${data.length} registros`,'ok');
+      } catch (err) {
+        console.error(err);
+        setStatus(`Error cargando datos: ${err.message}`,'error');
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:16px;">Error al cargar.</td></tr>`;
+      }
     }
 
-    async function load() {
-      const res = await fetch("/api/meli-summary");
-      const json = await res.json();
-      cache = json.events || [];
-      render();
-    }
+    btnReload.addEventListener('click', loadData);
+    btnAutoRefresh.addEventListener('click', () => {
+      autoOn = !autoOn;
+      btnAutoRefresh.dataset.on = autoOn ? '1' : '0';
+      btnAutoRefresh.textContent = autoOn ? 'auto-refresh 10s (ON)' : 'auto-refresh 10s';
+      if (autoOn) {
+        if (autoTimer) clearInterval(autoTimer);
+        autoTimer = setInterval(loadData, 10_000);
+        loadData();
+      } else {
+        if (autoTimer) clearInterval(autoTimer);
+        autoTimer = null;
+      }
+    });
 
-    selType.addEventListener("change", render);
-    inpSearch.addEventListener("input", render);
-    btnReload.addEventListener("click", load);
-
-    load();
-    setInterval(load, 10000);
+    // primera carga
+    loadData();
+  })();
   </script>
 </body>
 </html>
