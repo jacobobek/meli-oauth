@@ -2,28 +2,14 @@
 import fetch from "node-fetch";
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const ML_CLIENT_ID = process.env.ML_CLIENT_ID;
-const ML_CLIENT_SECRET = process.env.ML_CLIENT_SECRET;
+const {
+  SUPABASE_URL,
+  SUPABASE_SERVICE_ROLE_KEY,
+  ML_CLIENT_ID,
+  ML_CLIENT_SECRET,
+} = process.env;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-// --- Helpers --------------------------------------------------------
-
-async function mlFetch(accessToken, path, qs = "") {
-  const url = `https://api.mercadolibre.com${path}${qs ? `?${qs}` : ""}`;
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  // Devuelve { ok:false, error } si falla para que no rompa todo
-  if (!res.ok) {
-    const err = await safeJson(res);
-    return { ok: false, status: res.status, error: err || {} };
-  }
-  const data = await res.json();
-  return { ok: true, data };
-}
 
 async function safeJson(res) {
   try {
@@ -33,11 +19,15 @@ async function safeJson(res) {
   }
 }
 
-// intenta refrescar el token y persistirlo
-async function ensureValidToken(row) {
-  // si querés, podés guardar expires_at y compararlo; por simplicidad, reintentamos
-  // con el token actual y si 401, refrescamos
-  return row; // el refresh real se hace on-demand abajo si hace falta
+async function mlFetch(accessToken, path, qs = "") {
+  const url = `https://api.mercadolibre.com${path}${qs ? `?${qs}` : ""}`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    return { ok: false, status: res.status, data: await safeJson(res), url };
+  }
+  return { ok: true, status: res.status, data: await res.json(), url };
 }
 
 async function refreshToken(row) {
@@ -53,11 +43,8 @@ async function refreshToken(row) {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
   });
-
   const json = await res.json();
-  if (!res.ok) {
-    throw new Error(`Refresh error ${res.status}: ${JSON.stringify(json)}`);
-  }
+  if (!res.ok) throw new Error(`Refresh ${res.status}: ${JSON.stringify(json)}`);
 
   const {
     access_token,
@@ -67,12 +54,12 @@ async function refreshToken(row) {
     user_id: tokenUserId,
   } = json;
 
-  // upsert
+  const user_id = String(row.user_id || tokenUserId);
   const { error } = await supabase
     .from("meli_tokens")
     .upsert(
       {
-        user_id: String(row.user_id || tokenUserId),
+        user_id,
         access_token,
         refresh_token,
         expires_in,
@@ -81,117 +68,121 @@ async function refreshToken(row) {
       },
       { onConflict: "user_id" }
     );
+  if (error) throw new Error(`Supabase upsert: ${error.message}`);
 
-  if (error) {
-    throw new Error(`Supabase upsert error: ${error.message}`);
-  }
-
-  return {
-    ...row,
-    access_token,
-    refresh_token,
-    expires_in,
-    scope,
-  };
+  return { ...row, access_token, refresh_token, expires_in, scope };
 }
 
-function mapOrder(order, userId) {
-  return {
-    type: "Orden",
-    id: order?.id ?? "",
-    status: order?.status ?? "",
-    amount: order?.total_amount ?? null,
-    buyer:
-      order?.buyer?.nickname ||
-      order?.buyer?.first_name ||
-      order?.buyer?.id ||
-      "",
-    date: order?.date_created || order?.last_updated || "",
-    rawTopic: "orders",
-    user_id: userId,
-  };
-}
+// Mappers
+const mapOrder = (order, userId) => ({
+  type: "Orden",
+  id: order?.id ?? "",
+  status: order?.status ?? "",
+  amount: order?.total_amount ?? null,
+  buyer:
+    order?.buyer?.nickname ||
+    order?.buyer?.first_name ||
+    order?.buyer?.id ||
+    "",
+  date: order?.date_created || order?.last_updated || "",
+  rawTopic: "orders",
+  user_id: userId,
+});
 
-function mapShipment(shipment, userId, order) {
-  return {
-    type: "Envío",
-    id: shipment?.id ?? "",
-    status: shipment?.status || shipment?.substatus || "",
-    amount: null,
-    buyer:
-      order?.buyer?.nickname ||
-      order?.buyer?.first_name ||
-      order?.buyer?.id ||
-      "",
-    date: shipment?.date_created || shipment?.last_updated || "",
-    rawTopic: "shipments",
-    user_id: userId,
-  };
-}
-
-// --- Handler --------------------------------------------------------
+const mapShipment = (shipment, userId, order) => ({
+  type: "Envío",
+  id: shipment?.id ?? "",
+  status: shipment?.status || shipment?.substatus || "",
+  amount: null,
+  buyer:
+    order?.buyer?.nickname ||
+    order?.buyer?.first_name ||
+    order?.buyer?.id ||
+    "",
+  date: shipment?.date_created || shipment?.last_updated || "",
+  rawTopic: "shipments",
+  user_id: userId,
+});
 
 export default async function handler(req, res) {
+  const debug = req.url.includes("debug=1");
+  const diag = []; // info por usuario
+
   try {
-    // 1) leer todos los usuarios con tokens
+    // 1) Tokens en Supabase
     const { data: rows, error } = await supabase
       .from("meli_tokens")
       .select("*");
-
     if (error) throw new Error(error.message);
 
     if (!rows || rows.length === 0) {
+      if (debug) {
+        return res.status(200).json({
+          events: [],
+          debug: [{ step: "no_tokens", msg: "Tabla meli_tokens vacía" }],
+        });
+      }
       return res.status(200).json({ events: [] });
     }
 
-    // 2) por cada user_id traer órdenes + envíos
     let events = [];
 
-    // limitar concurrencia (para no quemar rate limit brutalmente)
-    // procesamos en serie por simplicidad
     for (let row of rows) {
       const userId = String(row.user_id);
+      const info = { user_id: userId, steps: [] };
+      diag.push(info);
 
-      // asegurar token (el refresh se hace on-demand si hace falta)
-      row = await ensureValidToken(row);
-
-      // 2.1) buscar últimas 50 órdenes
-      // si 401 -> refrescar token y reintentar una vez
+      // 2) Traer órdenes (últimas 50)
       let ordersResp = await mlFetch(
         row.access_token,
         "/orders/search",
         `seller=${userId}&sort=date_desc&limit=50`
       );
+      info.steps.push({
+        step: "orders/search",
+        url: ordersResp.url,
+        status: ordersResp.status,
+        ok: ordersResp.ok,
+        sample: ordersResp.ok
+          ? { results_count: ordersResp.data?.results?.length ?? 0 }
+          : { error: ordersResp.data },
+      });
 
+      // 2.a) Si 401 → refrescar token y reintentar
       if (!ordersResp.ok && ordersResp.status === 401) {
-        row = await refreshToken(row);
-        ordersResp = await mlFetch(
-          row.access_token,
-          "/orders/search",
-          `seller=${userId}&sort=date_desc&limit=50`
-        );
+        try {
+          row = await refreshToken(row);
+          info.steps.push({ step: "refresh_token", ok: true });
+          ordersResp = await mlFetch(
+            row.access_token,
+            "/orders/search",
+            `seller=${userId}&sort=date_desc&limit=50`
+          );
+          info.steps.push({
+            step: "orders/search_retry",
+            status: ordersResp.status,
+            ok: ordersResp.ok,
+          });
+        } catch (e) {
+          info.steps.push({ step: "refresh_token", ok: false, error: e.message });
+        }
       }
 
       if (!ordersResp.ok) {
-        // si falló, registramos un “Evento” de error y seguimos con el siguiente user
-        events.push({
-          type: "Evento",
-          id: "",
-          status: `Error ${ordersResp.status}`,
-          amount: null,
-          buyer: "",
-          date: new Date().toISOString(),
-          rawTopic: `orders_search_error`,
-          user_id: userId,
+        // log y continuar con el próximo usuario
+        info.steps.push({
+          step: "orders_failed",
+          status: ordersResp.status,
+          error: ordersResp.data,
         });
         continue;
       }
 
       const orders = ordersResp.data?.results || [];
+      info.steps.push({ step: "orders_count", count: orders.length });
 
-      // 2.2) por cada orden agregamos fila "Orden" + (si corresponde) fila "Envío"
+      // 3) Para cada orden, mapeo + envío si corresponde
       for (const order of orders) {
-        // fila de orden
         events.push(mapOrder(order, userId));
 
         const shippingId =
@@ -200,54 +191,76 @@ export default async function handler(req, res) {
           order?.shipping_id;
 
         if (shippingId) {
-          // pedir detalle de envío
           let shipResp = await mlFetch(
             row.access_token,
             `/shipments/${shippingId}`
           );
+          info.steps.push({
+            step: "shipments_get",
+            shippingId,
+            status: shipResp.status,
+            ok: shipResp.ok,
+          });
           if (!shipResp.ok && shipResp.status === 401) {
-            row = await refreshToken(row);
-            shipResp = await mlFetch(
-              row.access_token,
-              `/shipments/${shippingId}`
-            );
+            // token recién refrescado arriba, pero igual reintento por las dudas
+            try {
+              row = await refreshToken(row);
+              info.steps.push({ step: "refresh_token_for_ship", ok: true });
+              shipResp = await mlFetch(
+                row.access_token,
+                `/shipments/${shippingId}`
+              );
+              info.steps.push({
+                step: "shipments_retry",
+                shippingId,
+                status: shipResp.status,
+                ok: shipResp.ok,
+              });
+            } catch (e) {
+              info.steps.push({
+                step: "refresh_token_for_ship",
+                ok: false,
+                error: e.message,
+              });
+            }
           }
-
           if (shipResp.ok) {
             events.push(mapShipment(shipResp.data, userId, order));
           } else {
-            // si falla el envío, no frenamos
-            events.push({
-              type: "Evento",
-              id: String(shippingId),
-              status: `ship_error_${shipResp.status}`,
-              amount: null,
-              buyer:
-                order?.buyer?.nickname ||
-                order?.buyer?.first_name ||
-                order?.buyer?.id ||
-                "",
-              date: order?.date_created || new Date().toISOString(),
-              rawTopic: "shipments_error",
-              user_id: userId,
+            // No frena: deja constancia del error de shipment
+            info.steps.push({
+              step: "shipment_failed",
+              shippingId,
+              status: shipResp.status,
+              error: shipResp.data,
             });
           }
         }
       }
     }
 
-    // 3) ordenar por fecha desc (si la hay)
+    // 4) Ordenar por fecha desc
     events.sort((a, b) => {
       const da = a.date ? new Date(a.date).getTime() : 0;
       const db = b.date ? new Date(b.date).getTime() : 0;
       return db - da;
     });
 
+    if (debug) {
+      return res.status(200).json({
+        events,
+        count: events.length,
+        debug: diag,
+      });
+    }
     return res.status(200).json({ events });
   } catch (err) {
     console.error("meli-summary error:", err);
-    return res
-      .status(500)
-      .json({ error: "Internal error", details: String(err?.message || err) });
+    if (debug) {
+      return res
+        .status(500)
+        .json({ error: String(err?.message || err), debug: diag });
+    }
+    return res.status(500).json({ error: "Internal error" });
   }
 }
