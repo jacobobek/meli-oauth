@@ -2,33 +2,30 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <title>Dashboard Mercado Libre</title>
+  <title>Mercado Libre</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    :root{--bg:#0f172a;--card:#111827;--text:#e5e7eb;--muted:#94a3b8;--accent:#22d3ee}
+    :root{--card:#111827;--text:#e5e7eb;--muted:#94a3b8}
     *{box-sizing:border-box}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,"Noto Sans","Liberation Sans";background:linear-gradient(180deg,#060b1b,#0b122a);color:var(--text)}
-    header{padding:20px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:rgba(15,23,42,.6);backdrop-filter:blur(8px);border-bottom:1px solid #1f2937}
-    header h1{margin:0;font-size:18px}
-    .actions{display:flex;gap:8px}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial;background:#0b122a;color:var(--text)}
+    header{padding:16px 20px;display:flex;justify-content:space-between;align-items:center;background:#0f172a;border-bottom:1px solid #1f2937;position:sticky;top:0}
     .pill{font-size:12px;color:var(--muted);padding:6px 10px;background:#0b1220;border:1px solid #1f2937;border-radius:999px;cursor:pointer}
-    .container{max-width:1100px;margin:24px auto;padding:0 16px}
-    .card{background:#111827;border:1px solid #1f2937;border-radius:12px;overflow:hidden}
-    table{width:100%;border-collapse:collapse}
-    th,td{padding:12px 14px;border-bottom:1px solid #1f2937;font-size:14px}
-    th{background:#0d1326;text-align:left;position:sticky;top:60px;color:#94a3b8}
-    tr:hover td{background:rgba(34,211,238,.04)}
-    .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
-    #status-line{margin:12px 0 8px 0;font-size:13px;opacity:.85}
+    .container{max-width:1100px;margin:16px auto;padding:0 12px}
+    #status-line{margin:8px 0 12px 0;font-size:13px;opacity:.85}
     #status-line[data-tone="ok"]{color:#86efac}
     #status-line[data-tone="error"]{color:#fca5a5}
     #status-line[data-tone="muted"]{color:#94a3b8}
+    .card{background:#111827;border:1px solid #1f2937;border-radius:12px;overflow:hidden}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:12px 14px;border-bottom:1px solid #1f2937;font-size:14px}
+    th{background:#0d1326;text-align:left;position:sticky;top:56px;color:var(--muted)}
+    .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
   </style>
 </head>
 <body>
   <header>
-    <h1>📊 Resumen Mercado Libre</h1>
-    <div class="actions">
+    <h1 style="margin:0">Mercado Libre</h1>
+    <div>
       <button id="btn-auto-refresh" class="pill" data-on="0">auto-refresh 10s</button>
       <button id="btn-reload" class="pill">Recargar</button>
     </div>
@@ -41,14 +38,8 @@
       <table>
         <thead>
           <tr>
-            <th>Tipo</th>
-            <th>ID</th>
-            <th>Estado</th>
-            <th>Monto</th>
-            <th>Comprador</th>
-            <th>Fecha</th>
-            <th class="mono">Topic</th>
-            <th class="mono">User</th>
+            <th>Tipo</th><th>ID</th><th>Estado</th><th>Monto</th>
+            <th>Comprador</th><th>Fecha</th><th class="mono">Topic</th><th class="mono">User</th>
           </tr>
         </thead>
         <tbody id="tbody"></tbody>
@@ -63,25 +54,14 @@
     const btnReload = document.getElementById('btn-reload');
     const btnAutoRefresh = document.getElementById('btn-auto-refresh');
     const statusLine = document.getElementById('status-line');
+    let autoTimer = null, autoOn = false;
 
-    let autoTimer = null;
-    let autoOn = false;
-
-    const fmtMoney = n => (n==null||isNaN(n)) ? '—' :
-      (n).toLocaleString('es-AR',{style:'currency',currency:'ARS'});
+    const fmtMoney = n => (n==null||isNaN(n)) ? '—' : n.toLocaleString('es-AR',{style:'currency',currency:'ARS'});
     const fmtDate  = d => d ? new Date(d).toLocaleString('es-AR') : '—';
-    const safe     = (v,f='—') => (v ?? '')!=='' ? v : f;
-    const pick = (obj, paths=[]) => {
-      for (const p of paths) {
-        const v = p.split('.').reduce((acc,k)=>acc?.[k], obj);
-        if (v !== undefined && v !== null) return v;
-      }
-      return undefined;
-    };
-    const setStatus = (msg,tone='muted') => {
-      statusLine.textContent = msg;
-      statusLine.dataset.tone = tone;
-    };
+    const safe     = (v,f='—') => (v ?? '') !== '' ? v : f;
+    const pick = (obj, paths=[]) => { for (const p of paths){ const v=p.split('.').reduce((a,k)=>a?.[k],obj); if(v!=null) return v } };
+
+    const setStatus = (msg,tone='muted') => { statusLine.textContent = msg; statusLine.dataset.tone = tone };
 
     async function loadData() {
       try {
@@ -90,24 +70,24 @@
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
         const data = Array.isArray(json) ? json : (Array.isArray(json?.events) ? json.events : []);
+        console.log('meli-summary ->', data); // <-- deja este log para depurar
 
         tbody.innerHTML = '';
-
-        if (!Array.isArray(data) || data.length===0) {
+        if (!Array.isArray(data) || data.length === 0) {
           setStatus('Sin datos para mostrar.','muted');
           tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:16px;">No hay registros</td></tr>`;
           return;
         }
 
-        for (const item of data) {
-          const tipo = safe(pick(item, ['type','resource','topic','notification_type']), '—');
-          const id   = safe(pick(item, ['id','order_id','resource_id','order.id','payment_id','shipment_id']), '—');
-          const estado = safe(pick(item, ['status','order_status','order.status','payment.status','shipment.status']), '—');
-          const monto  = fmtMoney(Number(pick(item, ['amount','total_amount','order.total_amount','transaction_amount','payment.transaction_amount'])));
-          const comprador = safe(pick(item, ['buyer.nickname','buyer.name','buyer','payer.nickname','payer.email']), '—');
-          const fecha = fmtDate(pick(item, ['date_created','created_at','order.date_created','timestamp']));
-          const topic = safe(pick(item, ['topic','resource','notification_type']), '—');
-          const user  = safe(pick(item, ['user_id','user','seller.id']), '—');
+        for (const it of data) {
+          const tipo = safe(pick(it,['type','resource','topic','notification_type']),'—');
+          const id   = safe(pick(it,['id','order_id','resource_id','order.id','payment_id','shipment_id']),'—');
+          const estado = safe(pick(it,['status','order_status','order.status','payment.status','shipment.status']),'—');
+          const monto  = fmtMoney(Number(pick(it,['amount','total_amount','order.total_amount','transaction_amount','payment.transaction_amount'])));
+          const comprador = safe(pick(it,['buyer.nickname','buyer.name','buyer','payer.nickname','payer.email']),'—');
+          const fecha = fmtDate(pick(it,['date_created','created_at','order.date_created','timestamp']));
+          const topic = safe(pick(it,['topic','resource','notification_type']),'—');
+          const user  = safe(pick(it,['user_id','user','seller.id']),'—');
 
           const tr = document.createElement('tr');
           tr.innerHTML = `
@@ -123,10 +103,10 @@
           tbody.appendChild(tr);
         }
 
-        setStatus(`OK · ${data.length} registros`,'ok');
+        setStatus(\`OK · \${data.length} registros\`,'ok');
       } catch (err) {
         console.error(err);
-        setStatus(`Error cargando datos: ${err.message}`,'error');
+        setStatus(\`Error cargando datos: \${err.message}\`,'error');
         tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:16px;">Error al cargar.</td></tr>`;
       }
     }
@@ -136,17 +116,10 @@
       autoOn = !autoOn;
       btnAutoRefresh.dataset.on = autoOn ? '1' : '0';
       btnAutoRefresh.textContent = autoOn ? 'auto-refresh 10s (ON)' : 'auto-refresh 10s';
-      if (autoOn) {
-        if (autoTimer) clearInterval(autoTimer);
-        autoTimer = setInterval(loadData, 10_000);
-        loadData();
-      } else {
-        if (autoTimer) clearInterval(autoTimer);
-        autoTimer = null;
-      }
+      if (autoOn) { if (autoTimer) clearInterval(autoTimer); autoTimer = setInterval(loadData, 10_000); loadData(); }
+      else { if (autoTimer) clearInterval(autoTimer); autoTimer = null; }
     });
 
-    // primera carga
     loadData();
   })();
   </script>
