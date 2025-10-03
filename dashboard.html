@@ -2,45 +2,43 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <title>Mercado Libre</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="icon" href="data:;base64,=">
+  <title>Mercado Libre</title>
   <style>
-    :root{--card:#111827;--text:#e5e7eb;--muted:#94a3b8}
-    *{box-sizing:border-box}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial;background:#0b122a;color:var(--text)}
-    header{padding:16px 20px;display:flex;justify-content:space-between;align-items:center;background:#0f172a;border-bottom:1px solid #1f2937;position:sticky;top:0}
-    .pill{font-size:12px;color:var(--muted);padding:6px 10px;background:#0b1220;border:1px solid #1f2937;border-radius:999px;cursor:pointer}
-    .container{max-width:1100px;margin:16px auto;padding:0 12px}
-    #status-line{margin:8px 0 12px 0;font-size:13px;opacity:.85}
-    #status-line[data-tone="ok"]{color:#86efac}
-    #status-line[data-tone="error"]{color:#fca5a5}
-    #status-line[data-tone="muted"]{color:#94a3b8}
-    .card{background:#111827;border:1px solid #1f2937;border-radius:12px;overflow:hidden}
-    table{width:100%;border-collapse:collapse}
-    th,td{padding:12px 14px;border-bottom:1px solid #1f2937;font-size:14px}
-    th{background:#0d1326;text-align:left;position:sticky;top:56px;color:var(--muted)}
-    .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+    :root {
+      --bg: #0f172a; --card:#111827; --text:#e5e7eb; --muted:#94a3b8;
+    }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+           background: linear-gradient(180deg, #060b1b, #0b122a); color:var(--text); }
+    header { padding:16px 20px; display:flex; gap:12px; align-items:center;
+             background: rgba(15,23,42,.6); border-bottom:1px solid #1f2937; position:sticky; top:0;}
+    h1 { margin:0; font-size:18px; }
+    .pill { font-size:12px; color:var(--muted); padding:6px 10px; background:#0b1220; border:1px solid #1f2937; border-radius:999px; cursor:pointer;}
+    .container { max-width:1100px; margin:18px auto; padding:0 12px; }
+    .card { background:var(--card); border:1px solid #1f2937; border-radius:12px; overflow:hidden; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { padding:12px 14px; border-bottom:1px solid #1f2937; font-size:14px; }
+    th { text-align:left; color:var(--muted); background:#0d1326; position:sticky; top:56px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New", monospace; }
+    #status { margin-left:auto; color:var(--muted); font-size:12px; }
   </style>
 </head>
 <body>
   <header>
-    <h1 style="margin:0">Mercado Libre</h1>
-    <div>
-      <button id="btn-auto-refresh" class="pill" data-on="0">auto-refresh 10s</button>
-      <button id="btn-reload" class="pill">Recargar</button>
-    </div>
+    <h1>Libre</h1>
+    <button id="btn-auto" class="pill">auto-refresh 10s</button>
+    <button id="btn-reload" class="pill">Recargar</button>
+    <span id="status">—</span>
   </header>
 
   <div class="container">
-    <div id="status-line" data-tone="muted">Listo</div>
-
     <div class="card">
       <table>
         <thead>
           <tr>
-            <th>Tipo</th><th>ID</th><th>Estado</th><th>Monto</th>
-            <th>Comprador</th><th>Fecha</th><th class="mono">Topic</th><th class="mono">User</th>
+            <th>Estado</th><th>Monto</th><th>Comprador</th><th>Fecha</th>
+            <th>Topic</th><th>User</th><th>ID</th>
           </tr>
         </thead>
         <tbody id="tbody"></tbody>
@@ -49,81 +47,104 @@
   </div>
 
   <script>
-  (() => {
-    const API_URL = '/api/meli-summary';
-    const tbody = document.getElementById('tbody');
-    const statusLine = document.getElementById('status-line');
+    // Usa la URL ABSOLUTA a tu API:
+    const API_URL = "https://meli-oauth.vercel.app/api/meli-summary";
 
-    let autoTimer = null, autoOn = false;
+    const $tbody = document.getElementById("tbody");
+    const $status = document.getElementById("status");
+    const $btnReload = document.getElementById("btn-reload");
+    const $btnAuto = document.getElementById("btn-auto");
 
-    const fmtMoney = n => (n==null||isNaN(n)) ? '—' : n.toLocaleString('es-AR',{style:'currency',currency:'ARS'});
-    const fmtDate  = d => d ? new Date(d).toLocaleString('es-AR') : '—';
-    const safe     = (v,f='—') => (v ?? '') !== '' ? v : f;
-    const pick = (obj, paths=[]) => { for (const p of paths){ const v=p.split('.').reduce((a,k)=>a?.[k],obj); if(v!=null) return v } };
+    let timer = null;
+    let autoOn = false;
 
-    const setStatus = (msg,tone='muted') => { statusLine.textContent = msg; statusLine.dataset.tone = tone };
+    function fmtMoney(n) {
+      const v = Number(n);
+      if (!isFinite(v)) return "—";
+      try { return v.toLocaleString("es-AR", { style:"currency", currency:"ARS" }); }
+      catch { return `$ ${v.toFixed(2)}`; }
+    }
+    function fmtDate(d) {
+      if (!d) return "—";
+      try { return new Date(d).toLocaleString("es-AR"); }
+      catch { return String(d); }
+    }
+    function safe(v, fallback="—") { return (v ?? "") !== "" ? v : fallback; }
+    function pick(obj, paths) {
+      for (const p of paths) {
+        const v = p.split(".").reduce((acc,k)=>acc?.[k], obj);
+        if (v !== undefined && v !== null) return v;
+      }
+      return undefined;
+    }
 
-    async function loadData() {
+    async function load() {
       try {
-        setStatus('Cargando…','muted');
-        const res = await fetch(API_URL,{cache:'no-store'});
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json();
-        const data = Array.isArray(json) ? json : (Array.isArray(json?.events) ? json.events : []);
-        console.log('meli-summary ->', data);
+        $status.textContent = "Cargando…";
+        // Para depurar fácilmente:
+        console.log("[dashboard] GET", API_URL);
 
-        tbody.innerHTML = '';
-        if (!Array.isArray(data) || data.length === 0) {
-          setStatus('Sin datos para mostrar.','muted');
-          tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:16px;">No hay registros</td></tr>`;
+        const res = await fetch(API_URL, { cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        console.log("[dashboard] data:", data);
+
+        let rows = Array.isArray(data) ? data : (data.events || []);
+        if (!Array.isArray(rows)) rows = [];
+
+        $tbody.innerHTML = "";
+
+        if (rows.length === 0) {
+          $tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:16px;">Sin datos</td></tr>`;
+          $status.textContent = "OK · 0 registros";
           return;
         }
 
-        for (const it of data) {
-          const tipo = safe(pick(it,['type','resource','topic','notification_type']),'—');
-          const id   = safe(pick(it,['id','order_id','resource_id','order.id','payment_id','shipment_id']),'—');
-          const estado = safe(pick(it,['status','order_status','order.status','payment.status','shipment.status']),'—');
-          const monto  = fmtMoney(Number(pick(it,['amount','total_amount','order.total_amount','transaction_amount','payment.transaction_amount'])));
-          const comprador = safe(pick(it,['buyer.nickname','buyer.name','buyer','payer.nickname','payer.email']),'—');
-          const fecha = fmtDate(pick(it,['date_created','created_at','order.date_created','timestamp']));
-          const topic = safe(pick(it,['topic','resource','notification_type']),'—');
-          const user  = safe(pick(it,['user_id','user','seller.id']),'—');
+        for (const item of rows) {
+          const id       = safe(pick(item, ["id","order_id","resource_id","order.id"]), "—");
+          const estado   = safe(pick(item, ["status","order_status","order.status"]), "—");
+          const monto    = fmtMoney(pick(item, ["amount","total_amount","order.total_amount"]));
+          const comp     = safe(pick(item, ["buyer.nickname","buyer.name","payer.nickname","payer.email"]), "—");
+          const fecha    = fmtDate(pick(item, ["date_created","created_at","order.date_created","timestamp"]));
+          const topic    = safe(pick(item, ["topic","resource","notification_type"]), "—");
+          const user     = safe(pick(item, ["user_id","user","seller.id"]), "—");
 
-          const tr = document.createElement('tr');
+          const tr = document.createElement("tr");
           tr.innerHTML = `
-            <td>${tipo}</td>
-            <td class="mono">${id}</td>
             <td>${estado}</td>
             <td>${monto}</td>
-            <td>${comprador}</td>
+            <td>${comp}</td>
             <td class="mono">${fecha}</td>
             <td class="mono">${topic}</td>
             <td class="mono">${user}</td>
-          `;
-          tbody.appendChild(tr);
+            <td class="mono">${id}</td>`;
+          $tbody.appendChild(tr);
         }
 
-        setStatus(\`OK · \${data.length} registros\`,'ok');
+        $status.textContent = `OK · ${rows.length} registros`;
       } catch (err) {
-        console.error(err);
-        setStatus(\`Error cargando datos: \${err.message}\`,'error');
-        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:16px;">Error al cargar.</td></tr>`;
+        console.error("[dashboard] error:", err);
+        $status.textContent = `Error: ${err.message}`;
+        $tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:16px;">Error al cargar</td></tr>`;
       }
     }
 
-    // Botones (NO rompen si no existen)
-    document.getElementById('btn-reload')?.addEventListener('click', loadData);
-    document.getElementById('btn-auto-refresh')?.addEventListener('click', (e) => {
-      const btn = e.currentTarget;
+    $btnReload.addEventListener("click", load);
+    $btnAuto.addEventListener("click", () => {
       autoOn = !autoOn;
-      btn.dataset.on = autoOn ? '1' : '0';
-      btn.textContent = autoOn ? 'auto-refresh 10s (ON)' : 'auto-refresh 10s';
-      if (autoOn) { if (autoTimer) clearInterval(autoTimer); autoTimer = setInterval(loadData, 10_000); loadData(); }
-      else { if (autoTimer) clearInterval(autoTimer); autoTimer = null; }
+      $btnAuto.textContent = autoOn ? "auto-refresh 10s (ON)" : "auto-refresh 10s";
+      if (autoOn) {
+        if (timer) clearInterval(timer);
+        timer = setInterval(load, 10000);
+        load();
+      } else {
+        if (timer) clearInterval(timer);
+        timer = null;
+      }
     });
 
-    loadData();
-  })();
+    load();
   </script>
 </body>
 </html>
