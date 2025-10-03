@@ -2,44 +2,103 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
+  <title>Resumen Mercado Libre</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Mercado Libre</title>
   <style>
     :root {
-      --bg: #0f172a; --card:#111827; --text:#e5e7eb; --muted:#94a3b8;
+      --bg: #0f172a;
+      --card: #111827;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --accent: #22d3ee;
+      --green: #10b981;
+      --red: #ef4444;
+      --amber: #f59e0b;
+      --border: #1f2937;
     }
     * { box-sizing: border-box; }
-    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
-           background: linear-gradient(180deg, #060b1b, #0b122a); color:var(--text); }
-    header { padding:16px 20px; display:flex; gap:12px; align-items:center;
-             background: rgba(15,23,42,.6); border-bottom:1px solid #1f2937; position:sticky; top:0;}
-    h1 { margin:0; font-size:18px; }
-    .pill { font-size:12px; color:var(--muted); padding:6px 10px; background:#0b1220; border:1px solid #1f2937; border-radius:999px; cursor:pointer;}
-    .container { max-width:1100px; margin:18px auto; padding:0 12px; }
-    .card { background:var(--card); border:1px solid #1f2937; border-radius:12px; overflow:hidden; }
-    table { width:100%; border-collapse:collapse; }
-    th, td { padding:12px 14px; border-bottom:1px solid #1f2937; font-size:14px; }
-    th { text-align:left; color:var(--muted); background:#0d1326; position:sticky; top:56px; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New", monospace; }
-    #status { margin-left:auto; color:var(--muted); font-size:12px; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Arial, "Noto Sans";
+      color: var(--text);
+      background: linear-gradient(180deg, #070b18, #0c1226);
+    }
+    header {
+      position: sticky; top: 0; z-index: 50;
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 18px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    header h1 { margin: 0; font-size: 18px; }
+    .actions { display: flex; gap: 8px; align-items: center; }
+    .pill {
+      font-size: 12px; color: var(--muted); border: 1px solid var(--border);
+      background: #0b1220; padding: 6px 10px; border-radius: 999px; cursor: pointer;
+    }
+    .pill[data-on="1"] { color: #a5f3fc; border-color: #155e75; background: #082231; }
+    .container { max-width: 1100px; margin: 18px auto; padding: 0 14px; }
+    .filters { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
+    .filters select, .filters input {
+      background: var(--card); color: var(--text); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 10px; outline: none;
+    }
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; overflow: hidden;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: 14px; }
+    th { text-align: left; color: var(--muted); background: #0d1326; position: sticky; top: 60px; z-index: 5; }
+    tr:hover td { background: rgba(34, 211, 238, 0.05); }
+    .badge { padding: 4px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--border); }
+    .b-orden { background: rgba(34,211,238,.08); color: #67e8f9; }
+    .b-envio { background: rgba(16,185,129,.08); color: #86efac; }
+    .b-preg { background: rgba(245,158,11,.08); color: #facc15; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    .muted { color: var(--muted); }
+    .status { margin: 10px 0 14px; color: var(--muted); font-size: 13px; }
+    .status[data-tone="ok"] { color: #86efac; }
+    .status[data-tone="error"] { color: #fca5a5; }
   </style>
 </head>
 <body>
   <header>
-    <h1>Libre</h1>
-    <button id="btn-auto" class="pill">auto-refresh 10s</button>
-    <button id="btn-reload" class="pill">Recargar</button>
-    <span id="status">—</span>
+    <h1>📊 Resumen Mercado Libre</h1>
+    <div class="actions">
+      <span id="btn-auto" class="pill" data-on="0">auto-refresh 10s</span>
+      <button id="btn-reload" class="pill">Recargar</button>
+    </div>
   </header>
 
   <div class="container">
+    <div id="status" class="status">Cargando…</div>
+
+    <div class="filters">
+      <select id="typeFilter">
+        <option value="">Todos los tipos</option>
+        <option value="order">Órdenes</option>
+        <option value="shipment">Envíos</option>
+        <option value="question">Preguntas</option>
+        <option value="event">Otros</option>
+      </select>
+      <input id="search" type="text" placeholder="Buscar por ID / comprador / estado…" />
+    </div>
+
     <div class="card">
       <table>
         <thead>
-          <tr>
-            <th>Estado</th><th>Monto</th><th>Comprador</th><th>Fecha</th>
-            <th>Topic</th><th>User</th><th>ID</th>
-          </tr>
+        <tr>
+          <th>Tipo</th>
+          <th>ID</th>
+          <th>Estado</th>
+          <th>Monto</th>
+          <th>Comprador</th>
+          <th>Fecha</th>
+          <th class="muted">Topic</th>
+          <th class="muted">User</th>
+        </tr>
         </thead>
         <tbody id="tbody"></tbody>
       </table>
@@ -47,104 +106,113 @@
   </div>
 
   <script>
-    // Usa la URL ABSOLUTA a tu API:
-    const API_URL = "https://meli-oauth.vercel.app/api/meli-summary";
+  (function () {
+    const API = '/api/meli-summary'; // <- tu endpoint
+    const tbody = document.getElementById('tbody');
+    const statusEl = document.getElementById('status');
+    const selType = document.getElementById('typeFilter');
+    const inpSearch = document.getElementById('search');
+    const btnReload = document.getElementById('btn-reload');
+    const btnAuto = document.getElementById('btn-auto');
 
-    const $tbody = document.getElementById("tbody");
-    const $status = document.getElementById("status");
-    const $btnReload = document.getElementById("btn-reload");
-    const $btnAuto = document.getElementById("btn-auto");
+    let dataCache = [];
+    let autoTimer = null;
 
-    let timer = null;
-    let autoOn = false;
+    const badge = (t) => {
+      const type = String(t || '').toLowerCase();
+      if (type.includes('order')) return '<span class="badge b-orden">Orden</span>';
+      if (type.includes('ship'))  return '<span class="badge b-envio">Envío</span>';
+      if (type.includes('quest')) return '<span class="badge b-preg">Pregunta</span>';
+      return '<span class="badge">Evento</span>';
+    };
+    const fmtMoney = (n) => (n == null || isNaN(n)) ? '' :
+      n.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+    const fmtDate = (d) => {
+      if (!d) return '';
+      try { return new Date(d).toLocaleString('es-AR'); } catch { return d; }
+    };
 
-    function fmtMoney(n) {
-      const v = Number(n);
-      if (!isFinite(v)) return "—";
-      try { return v.toLocaleString("es-AR", { style:"currency", currency:"ARS" }); }
-      catch { return `$ ${v.toFixed(2)}`; }
+    function setStatus(msg, tone = '') {
+      statusEl.textContent = msg;
+      statusEl.dataset.tone = tone;
     }
-    function fmtDate(d) {
-      if (!d) return "—";
-      try { return new Date(d).toLocaleString("es-AR"); }
-      catch { return String(d); }
-    }
-    function safe(v, fallback="—") { return (v ?? "") !== "" ? v : fallback; }
-    function pick(obj, paths) {
-      for (const p of paths) {
-        const v = p.split(".").reduce((acc,k)=>acc?.[k], obj);
-        if (v !== undefined && v !== null) return v;
-      }
-      return undefined;
+
+    function render() {
+      const q = inpSearch.value.trim().toLowerCase();
+      const typeSel = selType.value.trim().toLowerCase();
+
+      const rows = dataCache.filter(r => {
+        const okType = !typeSel || String(r.type || '').toLowerCase().includes(typeSel);
+        const hay = [
+          r.id, r.status, r.buyer, r.user, r.topic, r.amount
+        ].join(' ').toLowerCase();
+        const okSearch = !q || hay.includes(q);
+        return okType && okSearch;
+      });
+
+      tbody.innerHTML = rows.map(r => `
+        <tr>
+          <td>${badge(r.type)}</td>
+          <td class="mono">${r.id ?? ''}</td>
+          <td>${r.status ?? ''}</td>
+          <td>${r.amount != null ? fmtMoney(Number(r.amount)) : ''}</td>
+          <td>${r.buyer ?? ''}</td>
+          <td class="mono">${fmtDate(r.date)}</td>
+          <td class="muted mono">${r.topic ?? ''}</td>
+          <td class="muted mono">${r.user ?? ''}</td>
+        </tr>
+      `).join('');
     }
 
     async function load() {
       try {
-        $status.textContent = "Cargando…";
-        // Para depurar fácilmente:
-        console.log("[dashboard] GET", API_URL);
+        setStatus('Cargando…');
+        const res = await fetch(API, { cache: 'no-store' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const json = await res.json();
 
-        const res = await fetch(API_URL, { cache: "no-store" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
+        // 👇 clave: ahora tomamos rows (y si no, events por fallback)
+        const arr = json?.rows || json?.events || [];
+        // normalizo a la forma que espera la UI
+        dataCache = arr.map(e => ({
+          type:  e.type  ?? e.topic ?? 'event',
+          id:    e.id    ?? e.order_id ?? e.resource_id ?? '',
+          status:e.status ?? e.order_status ?? '',
+          amount:e.amount ?? e.total_amount ?? e.transaction_amount ?? '',
+          buyer: e.buyer ?? e?.payer?.nickname ?? e?.payer?.email ?? '',
+          date:  e.date  ?? e.date_created ?? e.created_at ?? e.timestamp ?? '',
+          topic: e.topic ?? e.resource ?? e.notification_type ?? '',
+          user:  e.user  ?? e.user_id ?? e?.seller?.id ?? ''
+        }));
 
-        console.log("[dashboard] data:", data);
-
-        let rows = Array.isArray(data) ? data : (data.events || []);
-        if (!Array.isArray(rows)) rows = [];
-
-        $tbody.innerHTML = "";
-
-        if (rows.length === 0) {
-          $tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:16px;">Sin datos</td></tr>`;
-          $status.textContent = "OK · 0 registros";
-          return;
-        }
-
-        for (const item of rows) {
-          const id       = safe(pick(item, ["id","order_id","resource_id","order.id"]), "—");
-          const estado   = safe(pick(item, ["status","order_status","order.status"]), "—");
-          const monto    = fmtMoney(pick(item, ["amount","total_amount","order.total_amount"]));
-          const comp     = safe(pick(item, ["buyer.nickname","buyer.name","payer.nickname","payer.email"]), "—");
-          const fecha    = fmtDate(pick(item, ["date_created","created_at","order.date_created","timestamp"]));
-          const topic    = safe(pick(item, ["topic","resource","notification_type"]), "—");
-          const user     = safe(pick(item, ["user_id","user","seller.id"]), "—");
-
-          const tr = document.createElement("tr");
-          tr.innerHTML = `
-            <td>${estado}</td>
-            <td>${monto}</td>
-            <td>${comp}</td>
-            <td class="mono">${fecha}</td>
-            <td class="mono">${topic}</td>
-            <td class="mono">${user}</td>
-            <td class="mono">${id}</td>`;
-          $tbody.appendChild(tr);
-        }
-
-        $status.textContent = `OK · ${rows.length} registros`;
+        setStatus(`OK · ${dataCache.length} registros`, 'ok');
+        render();
       } catch (err) {
-        console.error("[dashboard] error:", err);
-        $status.textContent = `Error: ${err.message}`;
-        $tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:16px;">Error al cargar</td></tr>`;
+        console.error(err);
+        setStatus('Error cargando datos: ' + err.message, 'error');
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:16px;">Error al cargar</td></tr>`;
       }
     }
 
-    $btnReload.addEventListener("click", load);
-    $btnAuto.addEventListener("click", () => {
-      autoOn = !autoOn;
-      $btnAuto.textContent = autoOn ? "auto-refresh 10s (ON)" : "auto-refresh 10s";
-      if (autoOn) {
-        if (timer) clearInterval(timer);
-        timer = setInterval(load, 10000);
-        load();
+    // Eventos
+    selType.addEventListener('change', render);
+    inpSearch.addEventListener('input', render);
+    btnReload.addEventListener('click', load);
+    btnAuto.addEventListener('click', () => {
+      const on = btnAuto.dataset.on === '1';
+      if (on) {
+        clearInterval(autoTimer); autoTimer = null;
+        btnAuto.dataset.on = '0'; btnAuto.textContent = 'auto-refresh 10s';
       } else {
-        if (timer) clearInterval(timer);
-        timer = null;
+        btnAuto.dataset.on = '1'; btnAuto.textContent = 'auto-refresh 10s (ON)';
+        autoTimer = setInterval(load, 10000);
+        load();
       }
     });
 
+    // Primera carga
     load();
+  })();
   </script>
 </body>
 </html>
