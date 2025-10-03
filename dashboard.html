@@ -1,183 +1,146 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
+  <meta charset="UTF-8" />
+  <title>Dashboard Mercado Libre</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Panel de Webhooks Meli</title>
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 20px; color:#222; }
-    h1 { margin: 0 0 10px; }
-    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
-    input, select, button { padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; }
-    button { background:#111; color:#fff; cursor:pointer; }
-    button.secondary { background:#fff; color:#111; border:1px solid #aaa; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #eee; vertical-align: top; }
-    th { background: #fafafa; position: sticky; top: 0; z-index: 1; }
-    .muted { color:#666; font-size: 12px; }
-    .payload { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; background:#f7f7f7; padding:8px; border:1px solid #e5e5e5; border-radius:6px; }
-    .pagination { display:flex; gap:8px; align-items:center; margin-top:12px; }
-    .badge { display:inline-block; padding:2px 6px; border-radius: 999px; font-size: 12px; border:1px solid #ddd; background:#f6f6f6; }
+    :root {
+      --bg: #0f172a;
+      --card: #111827;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --accent: #22d3ee;
+      --green: #10b981;
+      --red: #ef4444;
+      --amber: #f59e0b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans";
+      background: linear-gradient(180deg, #060b1b, #0b122a);
+      color: var(--text);
+    }
+    header {
+      padding: 20px 24px; display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0; backdrop-filter: blur(8px); background: rgba(15, 23, 42, 0.6); border-bottom: 1px solid #1f2937;
+    }
+    header h1 { margin: 0; font-size: 18px; letter-spacing: .4px; color: #fff; }
+    header .actions { display: flex; gap: 8px; align-items: center; }
+    .pill { font-size: 12px; color: var(--muted); padding: 6px 10px; background: #0b1220; border: 1px solid #1f2937; border-radius: 999px; }
+    .container { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
+    .filters { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
+    .filters select, .filters input {
+      background: var(--card); color: var(--text); border: 1px solid #1f2937; border-radius: 8px; padding: 8px 10px;
+    }
+    .card {
+      background: var(--card); border: 1px solid #1f2937; border-radius: 12px; overflow: hidden;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 12px 14px; border-bottom: 1px solid #1f2937; font-size: 14px; }
+    th { text-align: left; color: var(--muted); background: #0d1326; position: sticky; top: 60px; }
+    tr:hover td { background: rgba(34, 211, 238, 0.04); }
+    .badge { padding: 4px 8px; border-radius: 999px; font-size: 12px; border: 1px solid #1f2937; }
+    .b-orden { background: rgba(34, 211, 238, .08); color: #67e8f9; }
+    .b-envio { background: rgba(16, 185, 129, .08); color: #86efac; }
+    .b-pregunta { background: rgba(245, 158, 11, .08); color: #facc15; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .muted { color: var(--muted); }
   </style>
 </head>
 <body>
-  <h1>Panel — Webhooks Mercado Libre</h1>
+  <header>
+    <h1>📊 Resumen Mercado Libre</h1>
+    <div class="actions">
+      <span class="pill">auto-refresh 10s</span>
+      <button id="btnReload" class="pill">Recargar</button>
+    </div>
+  </header>
 
-  <div class="toolbar">
-    <label>
-      Buscar:
-      <input id="q" placeholder="user_id, resource, topic…" />
-    </label>
-    <label>
-      Topic:
-      <select id="topic">
-        <option value="">Todos</option>
-        <option>orders</option>
-        <option>items</option>
-        <option>payments</option>
-        <option>shipments</option>
-        <!-- agregá los que uses -->
+  <div class="container">
+    <div class="filters">
+      <select id="typeFilter">
+        <option value="">Todos los tipos</option>
+        <option value="Orden">Órdenes</option>
+        <option value="Envío">Envíos</option>
+        <option value="Pregunta">Preguntas</option>
+        <option value="Evento">Otros</option>
       </select>
-    </label>
-    <label>
-      Límite:
-      <select id="limit">
-        <option>25</option>
-        <option selected>50</option>
-        <option>100</option>
-        <option>200</option>
-      </select>
-    </label>
-    <button id="apply">Aplicar</button>
-    <label class="muted">
-      <input type="checkbox" id="autorefresh" />
-      Auto-refresh (10s)
-    </label>
-    <span class="muted" id="status"></span>
+      <input type="text" id="search" placeholder="Buscar por ID / comprador / estado..." />
+    </div>
+
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>Tipo</th>
+            <th>ID</th>
+            <th>Estado</th>
+            <th>Monto</th>
+            <th>Comprador</th>
+            <th>Fecha</th>
+            <th class="muted">Topic</th>
+            <th class="muted">User</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
   </div>
 
-  <table>
-    <thead>
-      <tr>
-        <th>Fecha</th>
-        <th>User</th>
-        <th>Topic</th>
-        <th>Resource</th>
-        <th>Payload</th>
-      </tr>
-    </thead>
-    <tbody id="rows">
-      <tr><td class="muted" colspan="5">Cargando…</td></tr>
-    </tbody>
-  </table>
+  <script>
+    const tbody = document.getElementById("tbody");
+    const selType = document.getElementById("typeFilter");
+    const inpSearch = document.getElementById("search");
+    const btnReload = document.getElementById("btnReload");
 
-  <div class="pagination">
-    <button id="prev" class="secondary">◀ Anterior</button>
-    <span id="pageInfo" class="muted"></span>
-    <button id="next" class="secondary">Siguiente ▶</button>
-  </div>
+    let cache = [];
 
-<script>
-  const $ = (sel) => document.querySelector(sel);
-  const rows = $("#rows");
-  const q = $("#q");
-  const topic = $("#topic");
-  const limit = $("#limit");
-  const status = $("#status");
-  const applyBtn = $("#apply");
-  const prevBtn = $("#prev");
-  const nextBtn = $("#next");
-  const pageInfo = $("#pageInfo");
-  const autorefresh = $("#autorefresh");
+    const badge = (type) => {
+      if (type === "Orden") return '<span class="badge b-orden">Orden</span>';
+      if (type === "Envío") return '<span class="badge b-envio">Envío</span>';
+      if (type === "Pregunta") return '<span class="badge b-pregunta">Pregunta</span>';
+      return '<span class="badge">Evento</span>';
+    };
 
-  let page = 1;
-  let timer = null;
+    function render() {
+      const type = selType.value.trim().toLowerCase();
+      const q = inpSearch.value.trim().toLowerCase();
 
-  function setLoading(on) {
-    status.textContent = on ? "Cargando…" : "";
-  }
-
-  function fmtDate(iso) {
-    if (!iso) return "";
-    try {
-      const d = new Date(iso);
-      return d.toLocaleString();
-    } catch { return iso; }
-  }
-
-  async function load() {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({
-        page: String(page),
-        limit: limit.value,
-      });
-      if (q.value.trim()) params.set("q", q.value.trim());
-      if (topic.value) params.set("topic", topic.value);
-
-      const resp = await fetch(`/api/events-list?${params.toString()}`);
-      const json = await resp.json();
-
-      rows.innerHTML = "";
-      (json.items || []).forEach(item => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td>${fmtDate(item.received_at)}</td>
-          <td><span class="badge">${item.user_id ?? "-"}</span></td>
-          <td><span class="badge">${item.topic ?? "-"}</span></td>
-          <td><div class="muted">${item.resource ?? "-"}</div></td>
-          <td>
-            <details>
-              <summary>Ver JSON</summary>
-              <div class="payload">${escapeHtml(JSON.stringify(item.payload, null, 2))}</div>
-            </details>
-          </td>
-        `;
-        rows.appendChild(tr);
+      const rows = cache.filter(e => {
+        const okType = !type || e.type.toLowerCase() === type;
+        const text = (e.id||"") + " " + (e.status||"") + " " + (e.buyer||"") + " " + (e.user_id||"");
+        const okSearch = !q || text.toLowerCase().includes(q);
+        return okType && okSearch;
       });
 
-      if ((json.items || []).length === 0) {
-        rows.innerHTML = `<tr><td class="muted" colspan="5">Sin resultados</td></tr>`;
-      }
-
-      const total = json.total ?? 0;
-      const from = (json.page - 1) * json.limit + 1;
-      const to = Math.min(from + json.limit - 1, total);
-
-      pageInfo.textContent = `Página ${json.page} — Mostrando ${from}-${to} de ${total}`;
-      prevBtn.disabled = page <= 1;
-      nextBtn.disabled = to >= total;
-
-    } catch (e) {
-      rows.innerHTML = `<tr><td colspan="5" class="muted">Error: ${e.message}</td></tr>`;
-      pageInfo.textContent = "";
-    } finally {
-      setLoading(false);
+      tbody.innerHTML = rows.map(e => `
+        <tr>
+          <td>${badge(e.type)}</td>
+          <td class="mono">${e.id || ""}</td>
+          <td>${e.status || ""}</td>
+          <td>${e.amount != null ? "$ " + e.amount : ""}</td>
+          <td>${e.buyer || ""}</td>
+          <td class="mono">${e.date || ""}</td>
+          <td class="muted mono">${e.rawTopic || ""}</td>
+          <td class="muted mono">${e.user_id || ""}</td>
+        </tr>
+      `).join("");
     }
-  }
 
-  function escapeHtml(s) {
-    return String(s)
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;");
-  }
-
-  applyBtn.addEventListener("click", () => { page = 1; load(); });
-  prevBtn.addEventListener("click", () => { if (page > 1) { page--; load(); } });
-  nextBtn.addEventListener("click", () => { page++; load(); });
-
-  autorefresh.addEventListener("change", () => {
-    if (autorefresh.checked) {
-      timer = setInterval(load, 10_000);
-    } else {
-      clearInterval(timer);
-      timer = null;
+    async function load() {
+      const res = await fetch("/api/meli-summary");
+      const json = await res.json();
+      cache = json.events || [];
+      render();
     }
-  });
 
-  // lectura inicial
-  load();
-</script>
+    selType.addEventListener("change", render);
+    inpSearch.addEventListener("input", render);
+    btnReload.addEventListener("click", load);
+
+    load();
+    setInterval(load, 10000);
+  </script>
 </body>
 </html>
