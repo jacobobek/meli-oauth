@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <title>Mercado Libre</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:;base64,=">
   <style>
     :root{--card:#111827;--text:#e5e7eb;--muted:#94a3b8}
     *{box-sizing:border-box}
@@ -51,9 +52,8 @@
   (() => {
     const API_URL = '/api/meli-summary';
     const tbody = document.getElementById('tbody');
-    const btnReload = document.getElementById('btn-reload');
-    const btnAutoRefresh = document.getElementById('btn-auto-refresh');
     const statusLine = document.getElementById('status-line');
+
     let autoTimer = null, autoOn = false;
 
     const fmtMoney = n => (n==null||isNaN(n)) ? '—' : n.toLocaleString('es-AR',{style:'currency',currency:'ARS'});
@@ -70,7 +70,7 @@
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
         const data = Array.isArray(json) ? json : (Array.isArray(json?.events) ? json.events : []);
-        console.log('meli-summary ->', data); // <-- deja este log para depurar
+        console.log('meli-summary ->', data);
 
         tbody.innerHTML = '';
         if (!Array.isArray(data) || data.length === 0) {
@@ -111,11 +111,13 @@
       }
     }
 
-    btnReload.addEventListener('click', loadData);
-    btnAutoRefresh.addEventListener('click', () => {
+    // Botones (NO rompen si no existen)
+    document.getElementById('btn-reload')?.addEventListener('click', loadData);
+    document.getElementById('btn-auto-refresh')?.addEventListener('click', (e) => {
+      const btn = e.currentTarget;
       autoOn = !autoOn;
-      btnAutoRefresh.dataset.on = autoOn ? '1' : '0';
-      btnAutoRefresh.textContent = autoOn ? 'auto-refresh 10s (ON)' : 'auto-refresh 10s';
+      btn.dataset.on = autoOn ? '1' : '0';
+      btn.textContent = autoOn ? 'auto-refresh 10s (ON)' : 'auto-refresh 10s';
       if (autoOn) { if (autoTimer) clearInterval(autoTimer); autoTimer = setInterval(loadData, 10_000); loadData(); }
       else { if (autoTimer) clearInterval(autoTimer); autoTimer = null; }
     });
