@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Panel de Webhooks Meli</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 20px; color:#222; }
+    h1 { margin: 0 0 10px; }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+    input, select, button { padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; }
+    button { background:#111; color:#fff; cursor:pointer; }
+    button.secondary { background:#fff; color:#111; border:1px solid #aaa; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #eee; vertical-align: top; }
+    th { background: #fafafa; position: sticky; top: 0; z-index: 1; }
+    .muted { color:#666; font-size: 12px; }
+    .payload { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; background:#f7f7f7; padding:8px; border:1px solid #e5e5e5; border-radius:6px; }
+    .pagination { display:flex; gap:8px; align-items:center; margin-top:12px; }
+    .badge { display:inline-block; padding:2px 6px; border-radius: 999px; font-size: 12px; border:1px solid #ddd; background:#f6f6f6; }
+  </style>
+</head>
+<body>
+  <h1>Panel — Webhooks Mercado Libre</h1>
+
+  <div class="toolbar">
+    <label>
+      Buscar:
+      <input id="q" placeholder="user_id, resource, topic…" />
+    </label>
+    <label>
+      Topic:
+      <select id="topic">
+        <option value="">Todos</option>
+        <option>orders</option>
+        <option>items</option>
+        <option>payments</option>
+        <option>shipments</option>
+        <!-- agregá los que uses -->
+      </select>
+    </label>
+    <label>
+      Límite:
+      <select id="limit">
+        <option>25</option>
+        <option selected>50</option>
+        <option>100</option>
+        <option>200</option>
+      </select>
+    </label>
+    <button id="apply">Aplicar</button>
+    <label class="muted">
+      <input type="checkbox" id="autorefresh" />
+      Auto-refresh (10s)
+    </label>
+    <span class="muted" id="status"></span>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Fecha</th>
+        <th>User</th>
+        <th>Topic</th>
+        <th>Resource</th>
+        <th>Payload</th>
+      </tr>
+    </thead>
+    <tbody id="rows">
+      <tr><td class="muted" colspan="5">Cargando…</td></tr>
+    </tbody>
+  </table>
+
+  <div class="pagination">
+    <button id="prev" class="secondary">◀ Anterior</button>
+    <span id="pageInfo" class="muted"></span>
+    <button id="next" class="secondary">Siguiente ▶</button>
+  </div>
+
+<script>
+  const $ = (sel) => document.querySelector(sel);
+  const rows = $("#rows");
+  const q = $("#q");
+  const topic = $("#topic");
+  const limit = $("#limit");
+  const status = $("#status");
+  const applyBtn = $("#apply");
+  const prevBtn = $("#prev");
+  const nextBtn = $("#next");
+  const pageInfo = $("#pageInfo");
+  const autorefresh = $("#autorefresh");
+
+  let page = 1;
+  let timer = null;
+
+  function setLoading(on) {
+    status.textContent = on ? "Cargando…" : "";
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return "";
+    try {
+      const d = new Date(iso);
+      return d.toLocaleString();
+    } catch { return iso; }
+  }
+
+  async function load() {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: limit.value,
+      });
+      if (q.value.trim()) params.set("q", q.value.trim());
+      if (topic.value) params.set("topic", topic.value);
+
+      const resp = await fetch(`/api/events-list?${params.toString()}`);
+      const json = await resp.json();
+
+      rows.innerHTML = "";
+      (json.items || []).forEach(item => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${fmtDate(item.received_at)}</td>
+          <td><span class="badge">${item.user_id ?? "-"}</span></td>
+          <td><span class="badge">${item.topic ?? "-"}</span></td>
+          <td><div class="muted">${item.resource ?? "-"}</div></td>
+          <td>
+            <details>
+              <summary>Ver JSON</summary>
+              <div class="payload">${escapeHtml(JSON.stringify(item.payload, null, 2))}</div>
+            </details>
+          </td>
+        `;
+        rows.appendChild(tr);
+      });
+
+      if ((json.items || []).length === 0) {
+        rows.innerHTML = `<tr><td class="muted" colspan="5">Sin resultados</td></tr>`;
+      }
+
+      const total = json.total ?? 0;
+      const from = (json.page - 1) * json.limit + 1;
+      const to = Math.min(from + json.limit - 1, total);
+
+      pageInfo.textContent = `Página ${json.page} — Mostrando ${from}-${to} de ${total}`;
+      prevBtn.disabled = page <= 1;
+      nextBtn.disabled = to >= total;
+
+    } catch (e) {
+      rows.innerHTML = `<tr><td colspan="5" class="muted">Error: ${e.message}</td></tr>`;
+      pageInfo.textContent = "";
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;");
+  }
+
+  applyBtn.addEventListener("click", () => { page = 1; load(); });
+  prevBtn.addEventListener("click", () => { if (page > 1) { page--; load(); } });
+  nextBtn.addEventListener("click", () => { page++; load(); });
+
+  autorefresh.addEventListener("change", () => {
+    if (autorefresh.checked) {
+      timer = setInterval(load, 10_000);
+    } else {
+      clearInterval(timer);
+      timer = null;
+    }
+  });
+
+  // lectura inicial
+  load();
+</script>
+</body>
+</html>
