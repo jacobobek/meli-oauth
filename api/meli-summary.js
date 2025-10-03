@@ -1,132 +1,79 @@
 // /api/meli-summary.js
-import { createClient } from "@supabase/supabase-js";
 import fetch from "node-fetch";
-
-const ML_API = "https://api.mercadolibre.com";
-
-function extractIdFromResource(resource) {
-  if (!resource) return null;
-  // ej: /orders/123456789 -> 123456789
-  const match = resource.match(/\/(\d+)(\?.*)?$/);
-  return match ? match[1] : null;
-}
-
-async function enrichOrder(id, token) {
-  const r = await fetch(`${ML_API}/orders/${id}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!r.ok) throw new Error(`order ${id} fetch failed`);
-  const j = await r.json();
-  return {
-    type: "Orden",
-    id: String(j.id),
-    status: j.status,
-    amount: j.total_amount,
-    buyer: j?.buyer?.nickname || j?.buyer?.first_name || "",
-    date: j.date_created,
-  };
-}
-
-async function enrichShipment(id, token) {
-  const r = await fetch(`${ML_API}/shipments/${id}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!r.ok) throw new Error(`shipment ${id} fetch failed`);
-  const j = await r.json();
-  return {
-    type: "Envío",
-    id: String(j.id),
-    status: j.status,
-    amount: j?.shipping_option?.cost || null,
-    buyer: j?.receiver_address?.receiver_name || "",
-    date: j.date_created || j.last_updated,
-  };
-}
-
-async function enrichQuestion(id, token) {
-  const r = await fetch(`${ML_API}/questions/${id}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!r.ok) throw new Error(`question ${id} fetch failed`);
-  const j = await r.json();
-  return {
-    type: "Pregunta",
-    id: String(j.id),
-    status: j.status || "",
-    amount: null,
-    buyer: j?.from?.nickname || "",
-    date: j?.date_created || j?.hold?.date_created || null,
-  };
-}
+import { createClient } from "@supabase/supabase-js";
 
 export default async function handler(req, res) {
   try {
-    const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env;
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const {
+      SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE_KEY,
+    } = process.env;
 
-    // 1) Traer últimos webhooks
-    const { data: hooks, error } = await supabase
-      .from("meli_webhooks")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(50);
-
-    if (error) return res.status(500).json({ error: error.message });
-
-    // 2) Mapear por cada hook -> resumen
-    const results = [];
-    for (const h of hooks) {
-      const { topic, user_id, resource, created_at } = h;
-      const objectId = extractIdFromResource(resource);
-
-      // buscar token por user_id
-      let token = null;
-      if (user_id) {
-        const { data: tk } = await supabase
-          .from("meli_tokens")
-          .select("access_token")
-          .eq("user_id", String(user_id))
-          .maybeSingle();
-        token = tk?.access_token || null;
-      }
-
-      // fallback por si no tengo id o token
-      const base = {
-        type: "Evento",
-        id: objectId || "",
-        user_id: user_id || "",
-        status: "",
-        amount: null,
-        buyer: "",
-        date: created_at,
-        rawTopic: topic || "",
-      };
-
-      if (!objectId || !token) {
-        results.push(base);
-        continue;
-      }
-
-      // Enriquecer según topic
-      try {
-        if (topic === "orders_v2") {
-          results.push({ ...base, ...(await enrichOrder(objectId, token)) });
-        } else if (topic === "shipments") {
-          results.push({ ...base, ...(await enrichShipment(objectId, token)) });
-        } else if (topic === "questions") {
-          results.push({ ...base, ...(await enrichQuestion(objectId, token)) });
-        } else {
-          // topics no manejados: devolvemos base
-          results.push(base);
-        }
-      } catch (e) {
-        // cualquier error de enriquecimiento -> devolvemos base
-        results.push(base);
-      }
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      return res.status(500).json({ error: "Faltan SUPABASE_URL o SERVICE_ROLE" });
     }
 
-    return res.status(200).json({ ok: true, events: results });
-  } catch (e) {
-    return res.status(500).json({ error: e.message });
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Permite forzar un user_id por query (?user_id=xxxxx)
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const qUserId = url.searchParams.get("user_id");
+    const debug = url.searchParams.get("debug");
+
+    // 1) Tomamos el token más reciente de la tabla meli_tokens
+    //    (si hay más de un usuario, filtramos por query user_id si viene)
+    let query = supabase.from("meli_tokens").select("user_id, access_token").order("created_at", { ascending: false }).limit(1);
+
+    if (qUserId) {
+      query = supabase.from("meli_tokens").select("user_id, access_token").eq("user_id", qUserId).order("created_at", { ascending: false }).limit(1);
+    }
+
+    const { data: tokens, error: tokErr } = await query;
+    if (tokErr) {
+      return res.status(500).json({ error: "Error leyendo meli_tokens", details: tokErr.message });
+    }
+    if (!tokens || tokens.length === 0) {
+      return res.status(200).json({ rows: [] });
+    }
+
+    const { user_id, access_token } = tokens[0];
+
+    // 2) Llamamos a la API de Mercado Libre: últimas 50 órdenes del seller
+    const meliUrl = new URL("https://api.mercadolibre.com/orders/search");
+    meliUrl.searchParams.set("seller", qUserId || user_id);
+    meliUrl.searchParams.set("sort", "date_desc");
+    meliUrl.searchParams.set("limit", "50");
+
+    const ordersResp = await fetch(meliUrl.toString(), {
+      headers: { Authorization: `Bearer ${access_token}` },
+    });
+
+    const ordersJson = await ordersResp.json();
+
+    if (!ordersResp.ok) {
+      // Si falta scope de órdenes, suele dar 403 o 401
+      if (debug) {
+        return res.status(ordersResp.status).json({ error: "Error Meli", status: ordersResp.status, details: ordersJson });
+      }
+      return res.status(200).json({ rows: [], note: "No se pudieron leer las órdenes (¿falta scope?)" });
+    }
+
+    const results = Array.isArray(ordersJson.results) ? ordersJson.results : [];
+
+    // 3) Mapeamos a las columnas que usa el dashboard
+    const rows = results.map((o) => ({
+      type: "order",
+      id: o.id,
+      status: o.order_status || o.status || "",
+      amount: (o.total_amount != null ? o.total_amount : (o.payments?.[0]?.total_paid_amount ?? null)),
+      buyer: o.buyer?.nickname || o.buyer?.first_name || "",
+      date: o.date_created || o.stop_time || "",
+      topic: "orders",
+      user: qUserId || user_id,
+    }));
+
+    return res.status(200).json({ rows });
+  } catch (err) {
+    return res.status(500).json({ error: "Error inesperado", details: err?.message });
   }
 }
