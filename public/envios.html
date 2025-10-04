@@ -5,15 +5,10 @@
   <title>Envíos (ME1 y Acordar) — Panel</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
-    :root {
-      --bg: #0b1220; --card:#0f172a; --muted:#93a3b8; --text:#e5e7eb;
-      --border:#1f2937; --ok:#16a34a; --warn:#f59e0b; --bad:#ef4444; --cyan:#22d3ee;
-    }
+    :root { --bg:#0b1220; --card:#0f172a; --muted:#93a3b8; --text:#e5e7eb; --border:#1f2937; --ok:#16a34a; --warn:#f59e0b; --bad:#ef4444; --cyan:#22d3ee; }
     *{box-sizing:border-box}
-    body{margin:0;background:linear-gradient(180deg,#060b1b,#0b122a);color:var(--text);
-         font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial}
-    header{position:sticky;top:0;z-index:5;background:rgba(10,15,30,.6);backdrop-filter:blur(8px);
-           border-bottom:1px solid var(--border);display:flex;gap:12px;align-items:center;justify-content:space-between;padding:14px 18px}
+    body{margin:0;background:linear-gradient(180deg,#060b1b,#0b122a);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial}
+    header{position:sticky;top:0;z-index:5;background:rgba(10,15,30,.6);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);display:flex;gap:12px;align-items:center;justify-content:space-between;padding:14px 18px}
     h1{font-size:16px;margin:0}
     .pill{border:1px solid var(--border);background:#0b1220;border-radius:999px;padding:6px 10px;color:var(--muted);font-size:12px}
     .btn{border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:8px;padding:8px 12px;cursor:pointer}
@@ -62,7 +57,7 @@
         <option value="pending">Pendiente</option>
         <option value="rejected">Rechazado</option>
       </select>
-      <input id="search" type="text" placeholder="Buscar por comprador / ID / SKU / título" style="flex:1" />
+      <input id="search" type="text" placeholder="Buscar por comprador / ID / título" style="flex:1" />
     </div>
 
     <table>
@@ -85,6 +80,15 @@
   </div>
 
   <script>
+    async function ensureSession() {
+      const me = await fetch('/api/me', { cache:'no-store' }).then(r=>r.json());
+      if (!me.user_id) {
+        location.href = '/login.html';
+        return false;
+      }
+      return true;
+    }
+
     const API_BASE = '/api';
     const tbody = document.getElementById('tbody');
     const statusLine = document.getElementById('status');
@@ -98,10 +102,7 @@
 
     function setStatus(msg, tone='muted'){ statusLine.textContent = msg; statusLine.dataset.tone = tone; }
     const badge = (t) => t==='me1' ? '<span class="badge b-me1">ME1</span>' : '<span class="badge b-custom">Acordar</span>';
-    const fmt = {
-      money: n => isNaN(n) ? '—' : n.toLocaleString('es-AR',{style:'currency',currency:'ARS'}),
-      date:  s => s ? new Date(s).toLocaleString('es-AR') : '—'
-    };
+    const fmt = { money:(n)=>isNaN(n)?'—':n.toLocaleString('es-AR',{style:'currency',currency:'ARS'}), date:s=>s?new Date(s).toLocaleString('es-AR'):'—' };
     const payClass = s => s==='approved'?'pay-ok':(s==='rejected'?'pay-bad':'pay-pending');
 
     function rowHtml(o){
@@ -137,11 +138,9 @@
     async function load(){
       try{
         setStatus('Cargando…');
-        const url = new URL(API_BASE + '/orders-to-ship', location.origin);
-        // Podés filtrar desde el server si querés: url.searchParams.set('only','me1,custom');
-        const r = await fetch(url, {cache:'no-store'});
+        const r = await fetch(API_BASE + '/envios', { cache:'no-store' });
         if(!r.ok) throw new Error('HTTP '+r.status);
-        const data = await r.json(); // array normalizado
+        const data = await r.json();
         cache = data;
         setStatus(`OK · ${data.length} registros`, 'ok');
         render();
@@ -152,12 +151,11 @@
       }
     }
 
-    // Delegación de clicks en acciones
+    // Delegación de acciones
     tbody.addEventListener('click', async (ev)=>{
       const btn = ev.target.closest('button[data-act]');
       if(!btn) return;
       const tr = btn.closest('tr');
-      const orderId = tr.dataset.order;
       const shipmentId = tr.dataset.shipment || '';
       const act = btn.dataset.act;
 
@@ -168,11 +166,8 @@
           const res = await fetch(`${API_BASE}/label?shipment_id=${shipmentId}`);
           if(!res.ok) throw new Error('No se pudo obtener la etiqueta.');
           const blob = await res.blob();
-          // Abrir en nueva pestaña (imprimible)
           const url = URL.createObjectURL(blob);
-          const w = window.open(url, '_blank');
-          // Si querés disparar print automático:
-          // setTimeout(()=>{ w?.print?.(); }, 600);
+          window.open(url, '_blank');
         }catch(e){ alert(e.message); }
         finally{ btn.disabled = false; }
       }
@@ -192,14 +187,17 @@
       }
     });
 
-    // Filtros
+    // Filtros + recarga
     [filterType, filterPay].forEach(el=>el.addEventListener('change', render));
     search.addEventListener('input', render);
     btnReload.addEventListener('click', load);
 
-    // Auto refresh 15s
-    load();
-    timer = setInterval(load, 15000);
+    (async () => {
+      if (await ensureSession()) {
+        await load();
+        setInterval(load, 15000);
+      }
+    })();
   </script>
 </body>
 </html>
