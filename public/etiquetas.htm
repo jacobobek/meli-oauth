@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Etiquetas & Envíos · Meli</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header>
+    <h1>Etiquetas & Envíos</h1>
+    <nav>
+      <a href="/">Inicio</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <div class="toolbar">
+      <select id="filterKind">
+        <option value="">Todos</option>
+        <option value="ME1">ME1</option>
+        <option value="ACORDAR">Acordar con el vendedor</option>
+      </select>
+      <input id="q" type="search" placeholder="Buscar por ID / comprador / SKU..." />
+      <button id="reload">Recargar</button>
+    </div>
+
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>Orden</th>
+            <th>Fecha</th>
+            <th>Comprador</th>
+            <th>Tipo</th>
+            <th>Estado</th>
+            <th>Producto</th>
+            <th>SKU</th>
+            <th>Cant.</th>
+            <th>Monto</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
