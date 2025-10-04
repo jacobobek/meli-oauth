@@ -1,10 +1,12 @@
 {
-  "name": "meli-shipments-panel",
-  "version": "1.0.0",
+  "name": "meli-oauth",
+  "private": true,
   "type": "module",
-  "license": "MIT",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "build": "echo no build"
+  },
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.1",
     "node-fetch": "^3.3.2"
   }
 }
