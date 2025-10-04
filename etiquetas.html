@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Etiqueta de envío</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="./styles.css" />
+  <style>
+    /* Ajustes de impresión */
+    @media print {
+      body { background: #fff; }
+      .print-actions { display:none !important; }
+      .label { box-shadow:none; border:1px solid #000; }
+    }
+
+    .label {
+      width: 100%;
+      max-width: 680px;
+      margin: 24px auto;
+      background: #fff;
+      color: #111;
+      border-radius: 12px;
+      border: 1px solid #e5e7eb;
+      box-shadow: 0 3px 16px rgba(0,0,0,.06);
+      padding: 20px;
+    }
+    .label h2 { margin: 0 0 10px 0; }
+    .grid {
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .box {
+      border:1px dashed #cfd8e3;
+      border-radius:8px;
+      padding:12px;
+      background:#fafafa;
+    }
+    .bigline { font-size: 18px; font-weight: 600; }
+    .muted { color:#667085; font-size: 13px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .divider { height:1px; background:#e5e7eb; margin:16px 0; }
+    .row { display:flex; gap:8px; align-items:center; }
+  </style>
+</head>
+<body>
+  <header class="topbar print-actions">
+    <div class="brand">🧾 Etiqueta</div>
+    <nav>
+      <a href="./dashboard.html">Volver a Órdenes</a>
+      <button class="btn" onclick="window.print()">Imprimir</button>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section class="label" id="label">
+      <h2>Etiqueta de Envío</h2>
+      <div class="divider"></div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="muted">Vendedor</div>
+          <div class="bigline" id="seller_name">—</div>
+          <div class="mono" id="seller_id">—</div>
+        </div>
+        <div class="box">
+          <div class="muted">Orden</div>
+          <div class="bigline mono" id="order_id">—</div>
+          <div class="muted" id="order_date">—</div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="muted">Destinatario</div>
+          <div class="bigline" id="buyer_name">—</div>
+          <div id="buyer_phone" class="mono">—</div>
+          <div id="buyer_email" class="mono">—</div>
+        </div>
+        <div class="box">
+          <div class="muted">Dirección de entrega</div>
+          <div id="ship_address" class="bigline">—</div>
+          <div id="ship_obs" class="muted">—</div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="box">
+        <div class="muted">Producto</div>
+        <div class="bigline" id="item_title">—</div>
+        <div class="row">
+          <div class="mono" id="item_sku">SKU: —</div>
+          <div class="mono" id="item_qty">Cant.: —</div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="muted">Método de envío</div>
+          <div class="bigline" id="ship_method">—</div>
+        </div>
+        <div class="box">
+          <div class="muted">Pago</div>
+          <div id="payment_status" class="bigline">—</div>
+          <div class="mono" id="order_amount">$ —</div>
+        </div>
+      </div>
+    </section>
+
+    <div class="print-actions center" style="margin-bottom: 40px;">
+      <button class="btn" onclick="window.print()">Imprimir etiqueta</button>
+    </div>
+  </main>
+
+  <script src="./app.js"></script>
+  <script>
+    // Lee el pedido que guardó el dashboard
+    const raw = localStorage.getItem('selected_order');
+    const lbl = {
+      order_id:        document.getElementById('order_id'),
+      order_date:      document.getElementById('order_date'),
+      seller_name:     document.getElementById('seller_name'),
+      seller_id:       document.getElementById('seller_id'),
+      buyer_name:      document.getElementById('buyer_name'),
+      buyer_phone:     document.getElementById('buyer_phone'),
+      buyer_email:     document.getElementById('buyer_email'),
+      ship_address:    document.getElementById('ship_address'),
+      ship_obs:        document.getElementById('ship_obs'),
+      item_title:      document.getElementById('item_title'),
+      item_sku:        document.getElementById('item_sku'),
+      item_qty:        document.getElementById('item_qty'),
+      ship_method:     document.getElementById('ship_method'),
+      payment_status:  document.getElementById('payment_status'),
+      order_amount:    document.getElementById('order_amount'),
+    };
+
+    if (!raw) {
+      alert('No hay pedido seleccionado. Volvé al dashboard y presioná “Imprimir etiqueta”.');
+    } else {
+      const o = JSON.parse(raw);
+
+      const id    = o.id ?? o.order_id ?? '—';
+      const fecha = fmtDate(o.date ?? o.date_created);
+      const ship  = (o.shipping_method || o.logistic_type || '—').toUpperCase();
+      const pay   = (o.payment_status || o.status_payment || o.payment?.status || '—').toUpperCase();
+      const amount= fmtMoney(o.amount ?? o.total_amount);
+
+      // Vendedor
+      lbl.seller_name.textContent = o.seller_name || o.seller?.nickname || '—';
+      lbl.seller_id.textContent   = 'ID: ' + (o.seller_id || o.seller?.id || '—');
+
+      // Orden
+      lbl.order_id.textContent    = id;
+      lbl.order_date.textContent  = fecha;
+
+      // Comprador
+      lbl.buyer_name.textContent  = o.buyer || o.buyer_nickname || o.buyer_name || '—';
+      lbl.buyer_phone.textContent = o.buyer_phone || '—';
+      lbl.buyer_email.textContent = o.buyer_email || '—';
+
+      // Dirección
+      const addr = o.address || o.shipping?.receiver_address || {};
+      const line = [addr.address_line, addr.city?.name, addr.state?.name, addr.zip_code]
+        .filter(Boolean).join(', ');
+      lbl.ship_address.textContent = line || '—';
+      lbl.ship_obs.textContent     = o.shipping?.comment || o.address_observations || '—';
+
+      // Ítem
+      const item  = (o.items && o.items[0]) || o.item || {};
+      lbl.item_title.textContent = item.title || o.title || '—';
+      lbl.item_sku.textContent   = 'SKU: ' + (item.sku || item.seller_sku || o.sku || '—');
+      lbl.item_qty.textContent   = 'Cant.: ' + (item.quantity ?? o.quantity ?? 1);
+
+      // Envío / Pago
+      lbl.ship_method.textContent   = ship;
+      lbl.payment_status.textContent= pay;
+      lbl.order_amount.textContent  = amount;
+    }
+  </script>
+</body>
+</html>
