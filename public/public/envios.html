@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Envíos (ME1 y Acordar) — Panel</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root {
+      --bg: #0b1220; --card:#0f172a; --muted:#93a3b8; --text:#e5e7eb;
+      --border:#1f2937; --ok:#16a34a; --warn:#f59e0b; --bad:#ef4444; --cyan:#22d3ee;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:linear-gradient(180deg,#060b1b,#0b122a);color:var(--text);
+         font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial}
+    header{position:sticky;top:0;z-index:5;background:rgba(10,15,30,.6);backdrop-filter:blur(8px);
+           border-bottom:1px solid var(--border);display:flex;gap:12px;align-items:center;justify-content:space-between;padding:14px 18px}
+    h1{font-size:16px;margin:0}
+    .pill{border:1px solid var(--border);background:#0b1220;border-radius:999px;padding:6px 10px;color:var(--muted);font-size:12px}
+    .btn{border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:8px;padding:8px 12px;cursor:pointer}
+    .btn:hover{border-color:#334155}
+    .btn.cyan{border-color:#155e75;background:#0b3a4a}
+    .container{max-width:1200px;margin:20px auto;padding:0 16px}
+    .grid{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+    input,select{background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 10px}
+    table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+    th,td{padding:12px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+    th{background:#0d1326;color:var(--muted);text-align:left}
+    tr:hover td{background:rgba(34,211,238,.04)}
+    .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+    .badge{border:1px solid var(--border);padding:4px 8px;border-radius:999px;font-size:12px}
+    .b-me1{background:rgba(34,211,238,.08);color:#67e8f9}
+    .b-custom{background:rgba(245,158,11,.08);color:#facc15}
+    .pay-ok{color:var(--ok);font-weight:600}
+    .pay-pending{color:var(--warn)}
+    .pay-bad{color:var(--bad);font-weight:600}
+    .muted{color:var(--muted)}
+    .right{display:flex;gap:8px;align-items:center}
+    .status-line{margin-top:8px;color:var(--muted);font-size:12px}
+    .status-line[data-tone="ok"]{color:#86efac}
+    .status-line[data-tone="error"]{color:#fda4af}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>📦 Envíos (ME1 & Acordar)</h1>
+    <div class="right">
+      <span class="pill" id="autoPill">auto-refresh 15s</span>
+      <button id="btnReload" class="btn">Recargar</button>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="grid">
+      <select id="filterType">
+        <option value="">Todos</option>
+        <option value="me1">ME1</option>
+        <option value="custom">Acordar</option>
+      </select>
+      <select id="filterPay">
+        <option value="">Pago: todos</option>
+        <option value="approved">Aprobado</option>
+        <option value="pending">Pendiente</option>
+        <option value="rejected">Rechazado</option>
+      </select>
+      <input id="search" type="text" placeholder="Buscar por comprador / ID / SKU / título" style="flex:1" />
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Tipo</th>
+          <th>ID Pedido</th>
+          <th class="muted">Envío</th>
+          <th>Comprador</th>
+          <th>Pago</th>
+          <th>Item</th>
+          <th>Fecha</th>
+          <th class="muted">Acciones</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+
+    <div id="status" class="status-line">Cargando…</div>
+  </div>
+
+  <script>
+    const API_BASE = '/api';
+    const tbody = document.getElementById('tbody');
+    const statusLine = document.getElementById('status');
+    const filterType = document.getElementById('filterType');
+    const filterPay  = document.getElementById('filterPay');
+    const search     = document.getElementById('search');
+    const btnReload  = document.getElementById('btnReload');
+
+    let cache = [];
+    let timer = null;
+
+    function setStatus(msg, tone='muted'){ statusLine.textContent = msg; statusLine.dataset.tone = tone; }
+    const badge = (t) => t==='me1' ? '<span class="badge b-me1">ME1</span>' : '<span class="badge b-custom">Acordar</span>';
+    const fmt = {
+      money: n => isNaN(n) ? '—' : n.toLocaleString('es-AR',{style:'currency',currency:'ARS'}),
+      date:  s => s ? new Date(s).toLocaleString('es-AR') : '—'
+    };
+    const payClass = s => s==='approved'?'pay-ok':(s==='rejected'?'pay-bad':'pay-pending');
+
+    function rowHtml(o){
+      const canPrint = o.payment_status==='approved';
+      return `
+        <tr data-order="${o.id}" data-shipment="${o.shipment_id||''}">
+          <td>${badge(o.shipping_type)}</td>
+          <td class="mono">${o.id}</td>
+          <td class="mono muted">${o.shipment_id||'—'}</td>
+          <td>${o.buyer||'—'}</td>
+          <td class="${payClass(o.payment_status)}">${o.payment_status||'—'}</td>
+          <td title="${o.item_title||''}">${o.item_title||'—'}</td>
+          <td class="mono">${fmt.date(o.date_created)}</td>
+          <td>
+            <button class="btn cyan" data-act="print" ${canPrint?'':'disabled title="Pago no aprobado"'}>Imprimir etiqueta</button>
+            <button class="btn" data-act="mark" ${o.shipment_id?'':'disabled'}>Marcar despachado</button>
+          </td>
+        </tr>`;
+    }
+
+    function render(){
+      const t = filterType.value, p = filterPay.value, q = search.value.trim().toLowerCase();
+      const rows = cache.filter(o=>{
+        const okT = !t || o.shipping_type===t;
+        const okP = !p || o.payment_status===p;
+        const text = `${o.id} ${o.buyer||''} ${o.item_title||''}`.toLowerCase();
+        const okQ = !q || text.includes(q);
+        return okT && okP && okQ;
+      });
+      tbody.innerHTML = rows.map(rowHtml).join('');
+    }
+
+    async function load(){
+      try{
+        setStatus('Cargando…');
+        const url = new URL(API_BASE + '/orders-to-ship', location.origin);
+        // Podés filtrar desde el server si querés: url.searchParams.set('only','me1,custom');
+        const r = await fetch(url, {cache:'no-store'});
+        if(!r.ok) throw new Error('HTTP '+r.status);
+        const data = await r.json(); // array normalizado
+        cache = data;
+        setStatus(`OK · ${data.length} registros`, 'ok');
+        render();
+      }catch(e){
+        console.error(e);
+        setStatus('Error cargando datos: ' + e.message, 'error');
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:16px;">Error al cargar</td></tr>`;
+      }
+    }
+
+    // Delegación de clicks en acciones
+    tbody.addEventListener('click', async (ev)=>{
+      const btn = ev.target.closest('button[data-act]');
+      if(!btn) return;
+      const tr = btn.closest('tr');
+      const orderId = tr.dataset.order;
+      const shipmentId = tr.dataset.shipment || '';
+      const act = btn.dataset.act;
+
+      if(act==='print'){
+        if(!shipmentId){ alert('No hay shipment vinculado.'); return; }
+        btn.disabled = true;
+        try{
+          const res = await fetch(`${API_BASE}/label?shipment_id=${shipmentId}`);
+          if(!res.ok) throw new Error('No se pudo obtener la etiqueta.');
+          const blob = await res.blob();
+          // Abrir en nueva pestaña (imprimible)
+          const url = URL.createObjectURL(blob);
+          const w = window.open(url, '_blank');
+          // Si querés disparar print automático:
+          // setTimeout(()=>{ w?.print?.(); }, 600);
+        }catch(e){ alert(e.message); }
+        finally{ btn.disabled = false; }
+      }
+
+      if(act==='mark'){
+        if(!shipmentId){ alert('No hay shipment vinculado.'); return; }
+        const status = prompt('Estado a marcar (shipped / ready_to_ship):', 'shipped');
+        if(!status) return;
+        btn.disabled = true;
+        try{
+          const res = await fetch(`${API_BASE}/mark-dispatched?shipment_id=${shipmentId}&status=${encodeURIComponent(status)}`, {method:'POST'});
+          const js = await res.json();
+          if(!res.ok) throw new Error(js?.error || 'Error al marcar envío');
+          alert('Envío actualizado en ML.');
+        }catch(e){ alert(e.message); }
+        finally{ btn.disabled = false; }
+      }
+    });
+
+    // Filtros
+    [filterType, filterPay].forEach(el=>el.addEventListener('change', render));
+    search.addEventListener('input', render);
+    btnReload.addEventListener('click', load);
+
+    // Auto refresh 15s
+    load();
+    timer = setInterval(load, 15000);
+  </script>
+</body>
+</html>
