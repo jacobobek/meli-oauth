@@ -1,8 +1,10 @@
 {
-  "name": "meli-oauth",
+  "name": "meli-shipments-panel",
   "version": "1.0.0",
   "type": "module",
+  "license": "MIT",
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.4"
+    "@supabase/supabase-js": "^2.45.1",
+    "node-fetch": "^3.3.2"
   }
 }
