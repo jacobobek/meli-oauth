@@ -3,7 +3,10 @@
   "private": true,
   "type": "module",
   "engines": { "node": ">=18" },
-  "scripts": { "build": "echo no build" },
+  "scripts": {
+    "build": "echo no-build",
+    "start": "echo running"
+  },
   "dependencies": {
     "node-fetch": "^3.3.2",
     "pdfkit": "^0.13.0"
