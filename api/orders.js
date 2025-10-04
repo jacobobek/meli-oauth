@@ -1,49 +1,46 @@
-// /api/meli/orders.js
-import fetch from 'node-fetch';
-import { createClient } from '@supabase/supabase-js';
+// /api/orders.js
+import fetch from "node-fetch";
 
-export default async (req, res) => {
+export default async function handler(req, res) {
   try {
-    const { mode = 'me1,custom', payment = 'approved', limit = 50 } = req.query;
+    const { searchParams } = new URL(req.url, `http://${req.headers.host}`);
+    const only = (searchParams.get("only") || "").toLowerCase(); // me1|to_agree|""
+    const token = process.env.ML_ACCESS_TOKEN;
 
-    // 1) Cargar access_token desde tu base Supabase
-    const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env;
-    const supa = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const { data: row } = await supa.from('meli_tokens').select('*').limit(1).single();
-    const access_token = row?.access_token;
-    if (!access_token) return res.status(401).json({ error: 'falta token' });
+    if (!token) {
+      return res.status(200).json({ orders: [], note: "Set ML_ACCESS_TOKEN in Vercel" });
+    }
 
-    // 2) Consultar las órdenes en Mercado Libre
-    const seller_id = row.user_id;
-    const url = new URL('https://api.mercadolibre.com/orders/search');
-    url.searchParams.set('seller', seller_id);
-    url.searchParams.set('order_status', 'paid'); // buscar órdenes pagas
-    url.searchParams.set('limit', limit);
+    // Últimas 50 órdenes pagadas
+    const url = "https://api.mercadolibre.com/orders/search/recent?seller=me&limit=50&order.status=paid";
+    const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const json = await resp.json();
 
-    const r = await fetch(url, { headers: { Authorization: `Bearer ${access_token}` } });
-    const json = await r.json();
+    if (!resp.ok) {
+      return res.status(resp.status).json(json);
+    }
 
-    const modes = mode.split(',').map(s => s.trim());
-    const list = (json.results || []).map(o => {
-      const first = o.order_items?.[0];
-      const p = o.payments?.[0];
-      return {
-        order_id: o.id,
-        buyer: o.buyer?.nickname || o.buyer?.first_name || '',
-        payment_status: p?.status || 'pending',
+    const orders = (json.results || [])
+      .map(o => ({
+        id: o.id,
+        date_created: o.date_created,
+        status: o.status,
         total_amount: o.total_amount,
-        shipping_mode: o.shipping?.shipping_mode || 'custom',
-        shipment_id: o.shipping?.id || null,
-        title: first?.item?.title || '',
-        date_created: o.date_created
-      };
-    })
-    .filter(x => modes.includes(x.shipping_mode))
-    .filter(x => payment === 'all' ? true : x.payment_status === payment);
+        buyer: o.buyer?.nickname || o.buyer?.first_name || "",
+        shipping_mode: o.shipping?.shipping_mode || o.shipping?.mode || "",
+        shipping_status: o.shipping?.status || "",
+        shipping_id: o.shipping?.id || null,
+        title: o.order_items?.[0]?.item?.title || "",
+        quantity: o.order_items?.[0]?.quantity || 1
+      }))
+      .filter(o => {
+        if (only === "me1") return o.shipping_mode === "me1";
+        if (only === "to_agree") return o.shipping_mode === "me2" || o.shipping_mode === "custom" || o.shipping_mode === "not_specified" || o.shipping_mode === "to_agree";
+        return true;
+      });
 
-    res.json(list);
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: e.message });
+    res.status(200).json({ orders });
+  } catch (err) {
+    res.status(500).json({ error: "Unexpected error", details: err.message });
   }
-};
+}
