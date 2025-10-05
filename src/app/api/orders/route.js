@@ -14,13 +14,11 @@ export async function GET(req) {
   if (!access) return json({ error: "no_access_token" }, 401);
 
   try {
-    // 1) ORDERS SEARCH
     const searchUrl = `${API}/orders/search?seller=me&order.status=paid&sort=date_desc&limit=50`;
     const oRes = await fetch(searchUrl, { headers: { Authorization: `Bearer ${access}` } });
     const oText = await oRes.text();
 
     if (!oRes.ok) {
-      // En vez de 500, devolvemos el detalle para ver exactamente qué responde Meli
       return json({ step: "orders_search", status: oRes.status, url: searchUrl, body: safe(oText) }, 200);
     }
 
@@ -28,21 +26,14 @@ export async function GET(req) {
     const results = Array.isArray(search?.results) ? search.results : [];
     const enriched = [];
 
-    // 2) Por cada orden, traigo el shipment y filtro ME1 + Provincia BA
     for (const o of results) {
       const shipId = o?.shipping?.id;
       let shipment = null;
 
       if (shipId) {
-        const sUrl = `${API}/shipments/${shipId}`;
-        const sRes = await fetch(sUrl, { headers: { Authorization: `Bearer ${access}` } });
+        const sRes = await fetch(`${API}/shipments/${shipId}`, { headers: { Authorization: `Bearer ${access}` } });
         const sText = await sRes.text();
-        if (sRes.ok) {
-          shipment = safe(sText);
-        } else if (debug) {
-          // no rompemos, solo seguimos; en debug podés inspeccionar en logs
-          console.error("shipment error", sRes.status, sText);
-        }
+        if (sRes.ok) shipment = safe(sText);
       }
 
       const logistic_type = shipment?.logistic_type || o?.shipping?.logistic_type || o?.shipping?.mode;
@@ -74,7 +65,6 @@ export async function GET(req) {
     if (debug) payload._debug = { total_results: results.length };
     return json(payload, 200);
   } catch (e) {
-    // Si algo inesperado explota, devolvemos detalle y no 500 ciego
     return json({ step: "unexpected_error", message: String(e) }, 200);
   }
 }
