@@ -1,5 +1,4 @@
 import { cookies } from "next/headers";
-import fetch from "node-fetch";
 
 const API = "https://api.mercadolibre.com";
 
@@ -26,6 +25,7 @@ export async function exchangeCodeForToken(code) {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: body.toString()
   });
+
   if (!res.ok) {
     const t = await res.text().catch(() => "");
     throw new Error("No se pudo intercambiar el código por token: " + t);
