@@ -6,15 +6,11 @@ export const runtime = "nodejs";
 export async function GET(req) {
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
-  if (!code) {
-    return NextResponse.json({ error: "Falta code" }, { status: 400 });
-  }
+  if (!code) return NextResponse.json({ error: "Falta code" }, { status: 400 });
 
   try {
-    // Intercambia el code por el access_token en Mercado Libre
     const tokens = await exchangeCodeForToken(code);
 
-    // Setea cookies seguras y redirige al Home
     const res = NextResponse.redirect(new URL("/", req.url));
     const base = { path: "/", secure: true, sameSite: "lax" };
 
@@ -23,10 +19,7 @@ export async function GET(req) {
 
     return res;
   } catch (e) {
-    // Si falla el intercambio, devolvemos detalle para depurar
-    return NextResponse.json(
-      { error: "token_exchange_failed", detail: String(e) },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "token_exchange_failed", detail: String(e) }, { status: 500 });
+    // si querés debug más visible: return NextResponse.redirect(new URL("/debug", req.url));
   }
 }
