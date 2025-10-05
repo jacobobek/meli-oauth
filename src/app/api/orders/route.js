@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { isME1, isBuenosAires } from "../../../lib/filters.js";
+import { isME1, isBuenosAires } from "../../../lib/filters";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,9 +18,7 @@ export async function GET(req) {
     const oRes = await fetch(searchUrl, { headers: { Authorization: `Bearer ${access}` } });
     const oText = await oRes.text();
 
-    if (!oRes.ok) {
-      return json({ step: "orders_search", status: oRes.status, url: searchUrl, body: safe(oText) }, 200);
-    }
+    if (!oRes.ok) return json({ step: "orders_search", status: oRes.status, body: safe(oText) }, 200);
 
     const search = safe(oText);
     const results = Array.isArray(search?.results) ? search.results : [];
@@ -29,13 +27,11 @@ export async function GET(req) {
     for (const o of results) {
       const shipId = o?.shipping?.id;
       let shipment = null;
-
       if (shipId) {
         const sRes = await fetch(`${API}/shipments/${shipId}`, { headers: { Authorization: `Bearer ${access}` } });
         const sText = await sRes.text();
         if (sRes.ok) shipment = safe(sText);
       }
-
       const logistic_type = shipment?.logistic_type || o?.shipping?.logistic_type || o?.shipping?.mode;
       const addr = shipment?.receiver_address;
 
@@ -43,19 +39,16 @@ export async function GET(req) {
         enriched.push({
           order_id: o.id,
           buyer_name: `${o?.buyer?.first_name || ""} ${o?.buyer?.last_name || ""}`.trim() || o?.buyer?.nickname,
-          phone: o?.buyer?.phone?.number,
+          phone: o?.buyer?.phone?.number || "",
           items: (o.order_items || []).map(oi => ({
-            title: oi?.item?.title,
-            quantity: oi?.quantity,
-            sku: oi?.item?.seller_sku
+            title: oi?.item?.title, quantity: oi?.quantity, sku: oi?.item?.seller_sku
           })),
           shipment: {
             id: shipment?.id,
             state: addr?.state?.name || addr?.state?.id || "",
             city: addr?.city?.name || "",
             address_line: addr?.address_line || "",
-            zip: addr?.zip_code || "",
-            logistic_type
+            zip: addr?.zip_code || ""
           }
         });
       }
@@ -69,10 +62,7 @@ export async function GET(req) {
   }
 }
 
-function safe(t) { try { return JSON.parse(t); } catch { return t; } }
-function json(obj, status = 200) {
-  return new Response(JSON.stringify(obj), {
-    status,
-    headers: { "Content-Type": "application/json; charset=utf-8" }
-  });
+function safe(t){ try{ return JSON.parse(t); } catch { return t; } }
+function json(obj, status=200){
+  return new Response(JSON.stringify(obj), { status, headers: { "Content-Type":"application/json; charset=utf-8" }});
 }
