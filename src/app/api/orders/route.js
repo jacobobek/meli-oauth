@@ -20,7 +20,7 @@ export async function GET() {
       try {
         shipment = await meliGet(`/shipments/${shipId}`, access);
       } catch {
-        // ignoramos errores individuales de shipments
+        // ignoramos errores individuales
       }
     }
     const logistic_type = shipment?.logistic_type || o?.shipping?.logistic_type;
