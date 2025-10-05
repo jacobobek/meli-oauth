@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAccessTokenFromCookies, meliGet } from "../../../lib/meli.js";
 import { isME1, isBuenosAires } from "../../../lib/filters.js";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
@@ -18,8 +19,8 @@ export async function GET() {
     if (shipId) {
       try {
         shipment = await meliGet(`/shipments/${shipId}`, access);
-      } catch (e) {
-        // ignoramos errores de algunos envíos
+      } catch {
+        // ignoramos errores individuales de shipments
       }
     }
     const logistic_type = shipment?.logistic_type || o?.shipping?.logistic_type;
