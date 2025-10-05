@@ -1,15 +1,4 @@
-import { cookies } from "next/headers";
-
 const API = "https://api.mercadolibre.com";
-
-export function getAccessTokenFromCookies() {
-  try {
-    const jar = cookies();
-    return jar.get("meli_access_token")?.value || null;
-  } catch {
-    return null;
-  }
-}
 
 export async function exchangeCodeForToken(code) {
   const body = new URLSearchParams({
@@ -26,20 +15,12 @@ export async function exchangeCodeForToken(code) {
     body: body.toString()
   });
 
-  if (!res.ok) {
-    const t = await res.text().catch(() => "");
-    throw new Error("No se pudo intercambiar el código por token: " + t);
-  }
+  if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function meliGet(path, accessToken) {
-  const res = await fetch(`${API}${path}`, {
-    headers: { Authorization: `Bearer ${accessToken}` }
-  });
-  if (!res.ok) {
-    const t = await res.text().catch(() => "");
-    throw new Error(`Error GET ${path}: ${t}`);
-  }
-  return res.json();
+  const r = await fetch(`${API}${path}`, { headers: { Authorization: `Bearer ${accessToken}` }});
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
 }
