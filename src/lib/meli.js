@@ -13,16 +13,18 @@ export function getAccessTokenFromCookies() {
 }
 
 export async function exchangeCodeForToken(code) {
+  const body = new URLSearchParams({
+    grant_type: "authorization_code",
+    client_id: process.env.MELI_CLIENT_ID,
+    client_secret: process.env.MELI_CLIENT_SECRET,
+    code,
+    redirect_uri: process.env.MELI_REDIRECT_URI
+  });
+
   const res = await fetch(`${API}/oauth/token`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      grant_type: "authorization_code",
-      client_id: process.env.MELI_CLIENT_ID,
-      client_secret: process.env.MELI_CLIENT_SECRET,
-      code,
-      redirect_uri: process.env.MELI_REDIRECT_URI
-    })
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString()
   });
   if (!res.ok) {
     const t = await res.text().catch(() => "");
